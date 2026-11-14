@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Фон окна до отрисовки Compose, чтобы в тёмной системе не мигало жёлтым. -->
+    <color name="window_bg">#000000</color>
+    <!-- Виджеты ночью: чёрный фон, белые рамки, красные тени. -->
+    <color name="w_paper">#000000</color>
+    <color name="w_card">#141414</color>
+    <color name="w_ink">#FFFFFF</color>
+    <color name="w_shadow">#E5383B</color>
+    <color name="w_mute">#A3A3A3</color>
+    <color name="w_faint">#8C8C8C</color>
+    <color name="w_red">#F0484B</color>
+    <color name="w_card_done">#0A0A0A</color>
+</resources>

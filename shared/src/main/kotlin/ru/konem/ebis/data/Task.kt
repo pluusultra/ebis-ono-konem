@@ -1,0 +1,57 @@
+package ru.konem.ebis.data
+
+import java.time.DayOfWeek
+import java.time.LocalDate
+
+data class Task(
+    val id: Long,
+    val title: String,
+    val desc: String,
+    val due: LocalDate,
+    val done: Boolean = false,
+    val doneAt: Long = 0L,
+    /** Напоминание в минутах от полуночи, null — без времени. */
+    val time: Int? = null,
+    val repeat: Repeat = Repeat.None,
+    /** «Горит»: всегда наверху списка. */
+    val hot: Boolean = false,
+    /** Ручной порядок внутри списка. */
+    val order: Long = id,
+    /** Для сделанной повторяющейся задачи — id следующей копии, чтобы «вернуть» её убрало. */
+    val nextId: Long = 0L,
+    /** Когда задачу последний раз меняли (мс). По нему слияние с ПК решает, чья версия новее. */
+    val updatedAt: Long = 0L,
+)
+
+/**
+ * id задачи для уведомлений и будильников, которым нужен Int. Новые id строятся от времени и в Int не влезают,
+ * поэтому сворачиваем Long и уводим в диапазон от 2^30 — подальше от служебных номеров уведомлений.
+ */
+fun taskIntId(taskId: Long): Int = ((taskId xor (taskId ushr 32)).toInt() and 0x3FFFFFFF) or 0x40000000
+
+enum class Repeat(val label: String, val short: String) {
+    None("Не повторять", ""),
+    Daily("Каждый день", "каждый день"),
+    Weekdays("По будням", "по будням"),
+    Weekly("Каждую неделю", "каждую неделю"),
+    Monthly("Каждый месяц", "каждый месяц");
+
+    private fun step(d: LocalDate): LocalDate = when (this) {
+        None -> d
+        Daily -> d.plusDays(1)
+        Weekdays -> {
+            var n = d.plusDays(1)
+            while (n.dayOfWeek == DayOfWeek.SATURDAY || n.dayOfWeek == DayOfWeek.SUNDAY) n = n.plusDays(1)
+            n
+        }
+        Weekly -> d.plusWeeks(1)
+        Monthly -> d.plusMonths(1)
+    }
+
+    /** Следующая дата строго после сегодняшнего дня. */
+    fun next(due: LocalDate, today: LocalDate): LocalDate {
+        var d = step(due)
+        while (!d.isAfter(today)) d = step(d)
+        return d
+    }
+}

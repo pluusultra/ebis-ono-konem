@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Конь смотрит прямо на тебя: глаза в упор, бровь с подозрением, ухмылка. Для виджета «Рандом». -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+    <!-- уши -->
+    <path android:fillColor="#B4582A" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round" android:strokeLineCap="round"
+        android:pathData="M66,58 Q46,24 54,6 Q80,20 92,46 Z" />
+    <path android:fillColor="#B4582A" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round" android:strokeLineCap="round"
+        android:pathData="M134,58 Q154,24 146,6 Q120,20 108,46 Z" />
+    <!-- голова -->
+    <path android:fillColor="#B4582A" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round"
+        android:pathData="M68,44 Q100,26 132,44 Q150,74 142,112 Q160,136 154,160 Q146,194 100,194 Q54,194 46,160 Q40,136 58,112 Q50,74 68,44 Z" />
+    <!-- морда -->
+    <path android:fillColor="#EDB98C" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round"
+        android:pathData="M56,128 Q100,108 144,128 Q158,150 150,168 Q140,194 100,194 Q60,194 50,168 Q42,150 56,128 Z" />
+    <!-- чёлка -->
+    <path android:fillColor="#3A2216" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round"
+        android:pathData="M72,48 Q74,18 94,26 Q100,6 116,22 Q136,18 130,50 Q118,40 106,54 Q92,40 72,48 Z" />
+    <!-- внутренность ушей -->
+    <path android:fillColor="#EDB98C" android:pathData="M64,48 Q55,30 58,17 Q72,27 79,42 Z" />
+    <path android:fillColor="#EDB98C" android:pathData="M136,48 Q145,30 142,17 Q128,27 121,42 Z" />
+    <!-- румянец -->
+    <path android:fillColor="#F07A8A" android:fillAlpha="0.7"
+        android:pathData="M52,114 a10,6 0 1,0 20,0 a10,6 0 1,0 -20,0 Z" />
+    <path android:fillColor="#F07A8A" android:fillAlpha="0.7"
+        android:pathData="M128,114 a10,6 0 1,0 20,0 a10,6 0 1,0 -20,0 Z" />
+    <!-- глаза: белки и зрачки прямо на зрителя -->
+    <path android:fillColor="#FFFFFF" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:pathData="M62,90 a14,15 0 1,0 28,0 a14,15 0 1,0 -28,0 Z" />
+    <path android:fillColor="#FFFFFF" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:pathData="M110,90 a14,15 0 1,0 28,0 a14,15 0 1,0 -28,0 Z" />
+    <path android:fillColor="#1B1310" android:pathData="M69,92 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z" />
+    <path android:fillColor="#1B1310" android:pathData="M117,92 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M76,88 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M124,88 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+    <!-- брови: одна приподнята — «ну и?» -->
+    <path android:strokeColor="#1B1310" android:strokeWidth="6" android:strokeLineCap="round"
+        android:pathData="M62,70 Q76,64 90,72" />
+    <path android:strokeColor="#1B1310" android:strokeWidth="6" android:strokeLineCap="round"
+        android:pathData="M110,66 Q124,58 138,62" />
+    <!-- ноздри -->
+    <group android:rotation="-20" android:pivotX="84" android:pivotY="130">
+        <path android:fillColor="#1B1310" android:pathData="M78,130 a6,4 0 1,0 12,0 a6,4 0 1,0 -12,0 Z" />
+    </group>
+    <group android:rotation="20" android:pivotX="116" android:pivotY="130">
+        <path android:fillColor="#1B1310" android:pathData="M110,130 a6,4 0 1,0 12,0 a6,4 0 1,0 -12,0 Z" />
+    </group>
+    <!-- ухмылка -->
+    <path android:strokeColor="#1B1310" android:strokeWidth="6" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M76,162 Q98,170 126,154" />
+</vector>

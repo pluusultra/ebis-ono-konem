@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Кнопка «Не, давай другое»: бумага, рамка и жёсткая тень. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:left="2dp" android:top="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/w_shadow" />
+            <corners android:radius="9dp" />
+        </shape>
+    </item>
+    <item android:right="2dp" android:bottom="2dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/w_card" />
+            <stroke android:width="2dp" android:color="@color/w_ink" />
+            <corners android:radius="9dp" />
+        </shape>
+    </item>
+</layer-list>

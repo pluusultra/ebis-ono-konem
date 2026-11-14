@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Бейдж на сене. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/w_hay" />
+    <stroke android:width="1.5dp" android:color="@color/w_onhay" />
+    <corners android:radius="4dp" />
+</shape>

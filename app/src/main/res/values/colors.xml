@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="hay">#FFD447</color>
+    <color name="paper">#FFF8E6</color>
+    <color name="ink">#1B1310</color>
+    <color name="window_bg">#FFD447</color>
+    <!-- Виджеты: те же цвета, что в приложении; ночные варианты — в values-night. -->
+    <color name="w_paper">#FFF8E6</color>
+    <color name="w_card">#FFFFFF</color>
+    <color name="w_ink">#1B1310</color>
+    <color name="w_shadow">#1B1310</color>
+    <color name="w_mute">#5D4D42</color>
+    <color name="w_faint">#85705F</color>
+    <color name="w_red">#E5383B</color>
+    <color name="w_card_done">#F1EBDD</color>
+    <color name="w_hay">#FFD447</color>
+    <color name="w_onhay">#1B1310</color>
+    <color name="w_header_sub">#4A3826</color>
+    <color name="w_green">#2FA866</color>
+    <color name="w_white">#FFFFFF</color>
+</resources>

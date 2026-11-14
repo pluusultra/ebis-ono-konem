@@ -1,0 +1,11 @@
+name: 💡 Идея
+description: Чего не хватает коню
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Что хочется
+      description: Какую проблему решает, как это должно выглядеть.
+    validations:
+      required: true

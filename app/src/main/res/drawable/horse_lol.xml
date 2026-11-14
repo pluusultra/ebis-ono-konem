@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ржущий конь: анфас, глаза-хихикалки, слёзы от смеха, зубы наружу -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+
+    <!-- уши -->
+    <path android:fillColor="#B4582A" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round" android:strokeLineCap="round"
+        android:pathData="M66,58 Q46,24 54,6 Q80,20 92,46 Z" />
+    <path android:fillColor="#B4582A" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round" android:strokeLineCap="round"
+        android:pathData="M134,58 Q154,24 146,6 Q120,20 108,46 Z" />
+    <!-- голова -->
+    <path android:fillColor="#B4582A" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round"
+        android:pathData="M68,44 Q100,26 132,44 Q150,74 142,112 Q160,136 154,160 Q146,194 100,194 Q54,194 46,160 Q40,136 58,112 Q50,74 68,44 Z" />
+    <!-- морда -->
+    <path android:fillColor="#EDB98C" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round"
+        android:pathData="M56,128 Q100,108 144,128 Q158,150 150,168 Q140,194 100,194 Q60,194 50,168 Q42,150 56,128 Z" />
+    <!-- чёлка -->
+    <path android:fillColor="#3A2216" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round"
+        android:pathData="M72,48 Q74,18 94,26 Q100,6 116,22 Q136,18 130,50 Q118,40 106,54 Q92,40 72,48 Z" />
+    <!-- внутренность ушей -->
+    <path android:fillColor="#EDB98C" android:pathData="M64,48 Q55,30 58,17 Q72,27 79,42 Z" />
+    <path android:fillColor="#EDB98C" android:pathData="M136,48 Q145,30 142,17 Q128,27 121,42 Z" />
+    <!-- румянец -->
+    <path android:fillColor="#F07A8A" android:fillAlpha="0.7"
+        android:pathData="M52,114 a10,6 0 1,0 20,0 a10,6 0 1,0 -20,0 Z" />
+    <path android:fillColor="#F07A8A" android:fillAlpha="0.7"
+        android:pathData="M128,114 a10,6 0 1,0 20,0 a10,6 0 1,0 -20,0 Z" />
+    <!-- глаза > < -->
+    <path android:strokeColor="#1B1310" android:strokeWidth="7"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M64,74 L88,88 L64,100" />
+    <path android:strokeColor="#1B1310" android:strokeWidth="7"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M136,74 L112,88 L136,100" />
+    <!-- слёзы -->
+    <path android:fillColor="#5BC0EB" android:strokeColor="#1B1310" android:strokeWidth="3"
+        android:pathData="M44,94 Q32,108 38,116 Q48,122 52,110 Q52,102 44,94 Z" />
+    <path android:fillColor="#5BC0EB" android:strokeColor="#1B1310" android:strokeWidth="3"
+        android:pathData="M156,94 Q168,108 162,116 Q152,122 148,110 Q148,102 156,94 Z" />
+    <path android:fillColor="#5BC0EB" android:strokeColor="#1B1310" android:strokeWidth="3"
+        android:pathData="M26,82 Q20,90 24,94 Q30,96 31,89 Q31,85 26,82 Z" />
+    <path android:fillColor="#5BC0EB" android:strokeColor="#1B1310" android:strokeWidth="3"
+        android:pathData="M174,82 Q180,90 176,94 Q170,96 169,89 Q169,85 174,82 Z" />
+    <!-- ноздри -->
+    <group android:rotation="-20" android:pivotX="84" android:pivotY="130">
+        <path android:fillColor="#1B1310" android:pathData="M78,130 a6,4 0 1,0 12,0 a6,4 0 1,0 -12,0 Z" />
+    </group>
+    <group android:rotation="20" android:pivotX="116" android:pivotY="130">
+        <path android:fillColor="#1B1310" android:pathData="M110,130 a6,4 0 1,0 12,0 a6,4 0 1,0 -12,0 Z" />
+    </group>
+    <!-- пасть -->
+    <path android:fillColor="#5A1A1A" android:strokeColor="#1B1310" android:strokeWidth="5"
+        android:strokeLineJoin="round"
+        android:pathData="M62,144 Q100,134 138,144 Q134,186 100,186 Q66,186 62,144 Z" />
+    <path android:fillColor="#F07A8A" android:pathData="M80,178 Q100,162 120,178 Q100,188 80,178 Z" />
+    <!-- зубы -->
+    <path android:fillColor="#FFFFFF" android:strokeColor="#1B1310" android:strokeWidth="3"
+        android:strokeLineJoin="round"
+        android:pathData="M70,144 Q100,137 130,144 L127,161 Q100,164 73,161 Z" />
+    <path android:strokeColor="#1B1310" android:strokeWidth="2.5"
+        android:pathData="M85,141 V163 M100,139 V164 M115,141 V163" />
+</vector>

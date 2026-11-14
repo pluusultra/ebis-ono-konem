@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Логотип «конь-чекбокс»: зелёный чекбокс с галочкой и конскими ушами. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <path android:fillColor="#B4582A" android:strokeColor="#1B1310" android:strokeWidth="6"
+        android:strokeLineJoin="round" android:pathData="M34,48 L42,16 L58,42 Z" />
+    <path android:fillColor="#B4582A" android:strokeColor="#1B1310" android:strokeWidth="6"
+        android:strokeLineJoin="round" android:pathData="M62,42 L78,16 L86,48 Z" />
+    <path android:fillColor="#2FA866" android:strokeColor="#1B1310" android:strokeWidth="7"
+        android:pathData="M40,40 H80 A14,14 0 0,1 94,54 V90 A14,14 0 0,1 80,104 H40 A14,14 0 0,1 26,90 V54 A14,14 0 0,1 40,40 Z" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="10" android:strokeLineCap="round"
+        android:strokeLineJoin="round" android:pathData="M42,72 L55,85 L80,58" />
+</vector>

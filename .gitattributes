@@ -1,0 +1,8 @@
+# Скрипты для Linux должны иметь LF, иначе sh их не запустит.
+*.sh text eol=lf
+gradlew text eol=lf
+*.bat text eol=crlf
+*.ttf binary
+*.ico binary
+*.png binary
+*.jar binary

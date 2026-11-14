@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Пустой квадратик задачи. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp" android:viewportWidth="20" android:viewportHeight="20">
+    <path android:fillColor="@color/w_paper" android:strokeColor="@color/w_ink" android:strokeWidth="2.2"
+        android:pathData="M5.5,2.1 L14.5,2.1 A3.4,3.4 0 0 1 17.9,5.5 L17.9,14.5 A3.4,3.4 0 0 1 14.5,17.9 L5.5,17.9 A3.4,3.4 0 0 1 2.1,14.5 L2.1,5.5 A3.4,3.4 0 0 1 5.5,2.1 Z" />
+</vector>

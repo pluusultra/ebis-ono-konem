@@ -1,0 +1,32 @@
+name: 🐛 Баг
+description: Что-то сломалось или работает не так
+labels: [bug]
+body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Где
+      options: [Android, Windows, Linux]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Версия приложения
+      description: ПК — Настройки → «Сломалось?»; Android — в свойствах приложения в настройках телефона
+      placeholder: "2.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Что случилось
+      description: Что делал, что ожидал, что получил. Скриншот очень помогает.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Журнал (ПК)
+      description: Настройки → «Сломалось?» → «Скопировать журнал целиком». Названий задач там нет.
+      render: text

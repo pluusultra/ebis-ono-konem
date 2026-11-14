@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Долгое нажатие на иконку: сразу в форму новой задачи. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="add"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/sc_add_short"
+        android:shortcutLongLabel="@string/sc_add_long">
+        <intent
+            android:action="ru.konem.ebis.ADD"
+            android:targetPackage="ru.konem.ebis"
+            android:targetClass="ru.konem.ebis.MainActivity" />
+    </shortcut>
+</shortcuts>

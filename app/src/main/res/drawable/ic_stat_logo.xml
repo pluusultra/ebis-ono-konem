@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Значок в статус-баре: силуэт коня-чекбокса, галочка вырезана (evenOdd). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M30,48 L40,10 L60,40 Z M60,40 L80,10 L90,48 Z" />
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+        android:pathData="M38,36 H82 A16,16 0 0,1 98,52 V92 A16,16 0 0,1 82,108 H38 A16,16 0 0,1 22,92 V52 A16,16 0 0,1 38,36 Z
+            M36,76 L55,95 L86,62 L77,53 L55,77 L45,67 Z" />
+</vector>

@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Мелодии будильника ищутся по имени (getIdentifier), поэтому сжатие ресурсов их не видит — оставляем явно. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:keep="@raw/alarm_*" />

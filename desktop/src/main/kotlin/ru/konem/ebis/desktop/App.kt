@@ -183,8 +183,6 @@ fun App(
         }
     }
 
-    // Окно гаснет перед тем, как свернуться или спрятаться, — чтобы не исчезало рывком.
-    val vis = remember { Animatable(1f) }
     val cover = remember { Animatable(0f) }
     LaunchedEffect(state.pendingLook) {
         val next = state.pendingLook ?: return@LaunchedEffect
@@ -197,12 +195,13 @@ fun App(
         // Сбрасываем только в самом конце: смена ключа отменяет этот эффект, и заливка навсегда закрыла бы окно.
         state.pendingLook = null
     }
+    // Спрятаться или выйти — сразу, без затухания. Раньше содержимое гасло в прозрачность, но окно непрозрачное,
+    // и под ним Skia рисует белым: окно выцветало в белое. Последний такой кадр DirectX ещё и показывал при
+    // следующем появлении из трея — белая вспышка, а потом текст «прыгал» из уменьшенного кадра в нормальный.
     LaunchedEffect(frame?.exit) {
         val then = frame?.exit ?: return@LaunchedEffect
-        vis.animateTo(0f, tween(190, easing = FastOutSlowInEasing))
         then()
         frame.exit = null
-        vis.snapTo(1f)
     }
 
     val lively = LocalLively.current
@@ -217,11 +216,6 @@ fun App(
                         lively.poke()
                     }
                 }
-            }
-            .graphicsLayer {
-                alpha = vis.value
-                val s = 0.96f + 0.04f * vis.value
-                scaleX = s; scaleY = s
             }
             .background(Palette.Paper)
             .then(if (frame != null) Modifier.border(1.5.dp, Palette.OnHay.copy(alpha = 0.85f)) else Modifier),
@@ -245,6 +239,8 @@ fun App(
         Onboarding(state, pickFolder)
 
         if (cover.value > 0f) Box(Modifier.fillMaxSize().drawBehind { drawRect(Palette.Paper, alpha = cover.value) })
+        // Рамки системной нет — тянуть окно за края и углы даём сами, поверх всего.
+        if (frame != null) ResizeEdges(frame)
     }
 }
 

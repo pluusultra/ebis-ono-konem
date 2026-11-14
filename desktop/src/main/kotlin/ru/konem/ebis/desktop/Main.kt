@@ -4,8 +4,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import androidx.compose.runtime.getValue
@@ -38,6 +41,7 @@ import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.awt.Frame
 import java.io.File
 import javax.swing.JColorChooser
@@ -59,6 +63,7 @@ fun main(args: Array<String>) {
     // Системный вид у диалогов выбора папки и цвета: на Windows — родной, на Linux — GTK, если он есть.
     runCatching { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) }
     val store = DesktopStore()
+    UiScale.update(java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration)
     // Linux: трей через D-Bus (StatusNotifierItem). Пункты вызывают то, что окно подставит ниже, когда соберётся.
     val trayAct = object {
         var show: () -> Unit = {}
@@ -183,12 +188,15 @@ fun main(args: Array<String>) {
             }
         }
 
-        val windowState = rememberWindowState(size = WindowSize, position = WindowPosition(Alignment.Center))
+        val windowState = rememberWindowState(
+            size = remember { WindowFrame.initialSize(store.prefs, UiScale.of(state.look)) },
+            position = WindowPosition(Alignment.Center),
+        )
         Window(
             onCloseRequest = { hide() },
             visible = visible,
             undecorated = true,
-            resizable = false,
+            resizable = true,
             title = "Ебись оно конём",
             icon = painterResource("logo_app.xml"),
             state = windowState,
@@ -200,20 +208,44 @@ fun main(args: Array<String>) {
             val frame = remember { WindowFrame(window, store.prefs).also { it.restoreBounds() } }
             val scope = rememberCoroutineScope()
             show = {
-                visible = true
-                window.extendedState = window.extendedState and Frame.ICONIFIED.inv()
+                // Окно могло как раз гаснуть перед уходом в трей (двойной клик по значку) — отменяем уход.
+                frame.exit = null
                 // Въезд элементов — только при самом первом показе (автозапуск начинает со скрытого окна).
                 if (!shownOnce) { shownOnce = true; launch.restart() }
-                // Windows не даёт фоновому процессу просто так вылезти наверх — подмигиваем «поверх всех».
-                // window.requestFocus() тут нельзя: Windows отказывает фоновому процессу, запрос фокуса в AWT
-                // повисает, и окно потом не берёт клавиатуру даже по клику.
-                window.isAlwaysOnTop = true
-                window.toFront()
-                window.isAlwaysOnTop = false
-                // Если Windows так и не дала окну стать активным — сворачиваем и разворачиваем: так активирует всегда.
+                val wasHidden = !window.isShowing
+                visible = true
+                // visible применится при следующей перекомпозиции — дальше работаем с уже показанным окном.
                 scope.launch {
-                    delay(150)
-                    if (visible && !window.isActive) {
+                    withTimeoutOrNull(500) { while (!window.isShowing) delay(10) }
+                    val iconified = window.extendedState and Frame.ICONIFIED != 0
+                    WinDebug.mark()
+                    WinDebug.log("Показ: было спрятано=$wasHidden, свёрнуто=$iconified, Java: активно=${window.isActive}")
+                    // Спрятанное в трей окно на Windows помечено свёрнутым (см. componentHidden ниже): разворачиваем
+                    // его обычным путём Windows, и Java получает активацию — клавиатура работает сразу. Просто
+                    // setVisible(true) окно показывал, но фокус в AWT так и не приходил (Ctrl+N не работал).
+                    if (iconified) window.extendedState = window.extendedState and Frame.ICONIFIED.inv()
+                    frame.refresh()
+                    // Windows не даёт фоновому процессу просто так вылезти наверх — подмигиваем «поверх всех».
+                    // window.requestFocus() тут нельзя: Windows отказывает фоновому процессу, запрос фокуса в AWT
+                    // повисает, и окно потом не берёт клавиатуру даже по клику.
+                    window.isAlwaysOnTop = true
+                    window.toFront()
+                    window.isAlwaysOnTop = false
+                    if (Launcher.isWindows && !window.isActive) WinFocus.bringToFront(window)
+                    // Запасной путь: свернуть и развернуть активирует всегда, но окно на миг пропадает и под ним
+                    // мелькает то, что сзади. Поэтому только если окно правда не впереди. На Windows спрашиваем саму
+                    // Windows: Java (isActive) узнаёт об активации с опозданием, и по ней окно сворачивалось зря.
+                    delay(250)
+                    val front = if (Launcher.isWindows) WinFocus.isForeground(window) else window.isActive
+                    WinDebug.log("Через 250мс после показа: Windows: впереди=${if (Launcher.isWindows) front else "?"}, Java: активно=${window.isActive}")
+                    launch {
+                        delay(750)
+                        WinDebug.mark()
+                        WinDebug.log("Через 1с после показа: Windows: впереди=${if (Launcher.isWindows) WinFocus.isForeground(window) else "?"}, Java: активно=${window.isActive}, фокус=${window.focusOwner?.javaClass?.simpleName}")
+                    }
+                    if (visible && !front) {
+                        WinDebug.mark()
+                        WinDebug.log("Окно так и не стало активным — сворачиваю и разворачиваю, чтобы активировать")
                         window.extendedState = window.extendedState or Frame.ICONIFIED
                         window.extendedState = window.extendedState and Frame.ICONIFIED.inv()
                     }
@@ -231,9 +263,44 @@ fun main(args: Array<String>) {
             DisposableEffect(window) {
                 val l = object : WindowAdapter() {
                     override fun windowDeactivated(e: WindowEvent?) { activeAt = System.currentTimeMillis() }
+                    override fun windowDeiconified(e: WindowEvent?) { frame.refresh() }
+                }
+                // Переехали на другой монитор — «Авто» пересчитывает масштаб под него.
+                var screen = window.graphicsConfiguration?.device
+                val c = object : ComponentAdapter() {
+                    override fun componentShown(e: ComponentEvent?) { frame.refresh() }
+                    // Ушли в трей — помечаем окно свёрнутым. Скрытое окно анимаций не играет, а при показе оно
+                    // разворачивается, и Windows с Java честно его активируют (см. show).
+                    override fun componentHidden(e: ComponentEvent?) {
+                        if (Launcher.isWindows && window.extendedState and Frame.ICONIFIED == 0) {
+                            WinDebug.mark()
+                            window.extendedState = window.extendedState or Frame.ICONIFIED
+                            WinDebug.log("Спрятано в трей — помечаю окно свёрнутым (видно в Windows=${window.isShowing})")
+                        }
+                    }
+                    override fun componentMoved(e: ComponentEvent?) {
+                        val gc = window.graphicsConfiguration ?: return
+                        if (gc.device != screen) {
+                            screen = gc.device
+                            UiScale.update(gc)
+                        }
+                    }
                 }
                 window.addWindowListener(l)
-                onDispose { window.removeWindowListener(l) }
+                window.addComponentListener(c)
+                onDispose {
+                    window.removeWindowListener(l)
+                    window.removeComponentListener(c)
+                }
+            }
+            // Масштаб поменяли (в настройках или «Авто» на другом мониторе) — окно растёт или сжимается вместе с ним.
+            val scale = UiScale.of(state.look)
+            var lastScale by remember { mutableStateOf(scale) }
+            LaunchedEffect(scale) {
+                if (scale != lastScale) {
+                    frame.scaleBy(scale / lastScale)
+                    lastScale = scale
+                }
             }
             // Двойной клик по значку в трее (на Linux — одинарный): открыто и на виду — прячем в трей, иначе показываем.
             toggle = {
@@ -254,10 +321,36 @@ fun main(args: Array<String>) {
                 if (visible && !shownOnce) { shownOnce = true; launch.restart() }
             }
 
+            LaunchedEffect(Unit) { Log.i("win", "Отрисовка: ${runCatching { window.renderApi }.getOrNull()}, окно ${window.width}x${window.height}") }
+            // Первые кадры после возвращения окна на экран: сколько прошло и какого размера было содержимое.
+            var contentPx by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+            LaunchedEffect(frame.shows) {
+                if (!WinDebug.hot) return@LaunchedEffect
+                val t0 = System.nanoTime()
+                repeat(5) { n ->
+                    androidx.compose.runtime.withFrameNanos { }
+                    WinDebug.log("Кадр ${n + 1} после показа: +${(System.nanoTime() - t0) / 1_000_000}мс, содержимое ${contentPx.width}x${contentPx.height}px")
+                }
+            }
+
+            Box(
+                Modifier.fillMaxSize()
+                    .onSizeChanged { px ->
+                        contentPx = px
+                        WinDebug.log("Compose: содержимое ${px.width}x${px.height}px")
+                    },
+            ) {
             CompositionLocalProvider(LocalLaunch provides launch, LocalLively provides lively) {
                 launch.Drive()
                 lively.Drive()
                 EbisTheme(state.theme, state.look) {
+                    // Подложка окна в цвет темы: пока Skia не нарисовала кадр, вместо белого — свой фон.
+                    val paper = Palette.Paper
+                    LaunchedEffect(paper) {
+                        val c = java.awt.Color(paper.red, paper.green, paper.blue)
+                        window.background = c
+                        window.contentPane.background = c
+                    }
                     App(
                         state, quickAdd, frame,
                         onHide = { hide() },
@@ -266,6 +359,7 @@ fun main(args: Array<String>) {
                         reminders = reminders,
                     ) { chooseFolder(window, state.folder) }
                 }
+            }
             }
         }
     }

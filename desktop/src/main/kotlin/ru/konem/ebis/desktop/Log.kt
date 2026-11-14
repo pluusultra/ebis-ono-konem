@@ -9,6 +9,20 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
+ * Подробности про окно (размеры, состояния, кадры) — только в течение нескольких секунд после сворачивания,
+ * разворачивания, показа или скрытия. Иначе каждое движение окна забивало бы журнал.
+ */
+object WinDebug {
+    @Volatile private var at = 0L
+
+    fun mark() { at = System.currentTimeMillis() }
+
+    val hot: Boolean get() = System.currentTimeMillis() - at < 3000
+
+    fun log(msg: String) { if (hot) Log.i("win", msg) }
+}
+
+/**
  * Журнал на диске: что делал конь и где споткнулся. Чтобы человек с багом скинул файл, а не пересказывал.
  * Лежит в [dir] (на Windows — %APPDATA%\ebis-ono-konem\logs, на Linux — ~/.local/share/ebis-ono-konem/logs).
  * Названий задач и прочего личного сюда не пишем — только события, размеры, ошибки и сведения о системе.

@@ -33,6 +33,8 @@ dependencies {
     implementation("com.github.hypfvieh:dbus-java-core:5.1.1")
     implementation("com.github.hypfvieh:dbus-java-transport-native-unixsocket:5.1.1")
     implementation("org.slf4j:slf4j-nop:2.0.16")
+    // Windows: вывести окно из трея на передний план вызовами WinAPI (AttachThreadInput + SetForegroundWindow).
+    implementation("net.java.dev.jna:jna-platform:5.14.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation(compose.desktop.uiTestJUnit4)
 }

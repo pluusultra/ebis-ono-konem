@@ -189,8 +189,14 @@ private fun GeneralPane(state: AppState) {
     ) {
         Chips { ThemeMode.entries.forEach { m -> SelectChip(m.label, state.theme == m) { state.chooseTheme(m) } } }
     }
-    Item("Масштаб интерфейса", "Если всё ещё мелко — крути", stack = true) {
-        Chips { Scales.forEach { (s, l) -> SelectChip(l, (state.pendingLook ?: state.look).scale == s) { if (state.look.scale != s) state.pendingLook = state.look.copy(scale = s) } } }
+    Item("Масштаб интерфейса", "«Авто» подбирает под размер экрана. Если всё ещё мелко — крути. Окно растягивается за края", stack = true) {
+        Chips {
+            Scales.forEach { (s, label) ->
+                // У «Авто» показываем, что он подобрал для этого экрана.
+                val l = if (s == 0f) "$label · ${kotlin.math.round(UiScale.auto * 100).toInt()}%" else label
+                SelectChip(l, (state.pendingLook ?: state.look).scale == s) { if (state.look.scale != s) state.pendingLook = state.look.copy(scale = s) }
+            }
+        }
     }
     Item("«Сегодня»: новые сверху", "Свежие задачи в начале списка, а не в конце") {
         BrutalSwitch(state.newFirst) { state.toggleSort() }

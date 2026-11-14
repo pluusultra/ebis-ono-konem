@@ -118,7 +118,8 @@ data class Look(
     val strength: PatternStrength = PatternStrength.Soft,
     val head: Color = HeadPresets.first().second,
     val font: BodyFont = BodyFont.Onest,
-    val scale: Float = 1f,
+    /** Масштаб интерфейса; 0 — «Авто», по размеру экрана (см. [UiScale]). */
+    val scale: Float = 0f,
 ) {
     fun bg(dark: Boolean): Color? = if (dark) bgDark else bgLight
 
@@ -145,7 +146,8 @@ val BgPresets = listOf(
     "Графит" to Color(0xFF1E2228), "Полночь" to Color(0xFF0E1630), "Шоколад" to Color(0xFF1E1410),
 )
 
-val Scales = listOf(1f to "100%", 1.15f to "115%", 1.3f to "130%")
+/** 0 — «Авто». */
+val Scales = listOf(0f to "Авто", 0.9f to "90%", 1f to "100%", 1.15f to "115%", 1.3f to "130%", 1.5f to "150%", 1.75f to "175%")
 
 class LookStore(private val p: Preferences) {
     fun load(): Look {
@@ -162,7 +164,9 @@ class LookStore(private val p: Preferences) {
             strength = e("look.strength", d.strength, PatternStrength.entries.toTypedArray()),
             head = p.get("look.head", null)?.toLongOrNull()?.let { Color(it.toInt()) } ?: d.head,
             font = e("look.font", d.font, BodyFont.entries.toTypedArray()),
-            scale = p.getFloat("look.scale", 1f),
+            // До «Авто» масштаб сохранялся всегда, даже нетронутый: 100% без отметки нового формата считаем «Авто».
+            scale = if (p.get("look.scaleAuto", null) != null) p.getFloat("look.scale", 0f)
+            else p.getFloat("look.scale", 0f).takeIf { it != 1f } ?: 0f,
         )
     }
 
@@ -176,6 +180,7 @@ class LookStore(private val p: Preferences) {
         p.put("look.head", l.head.toArgb().toLong().toString())
         p.put("look.font", l.font.name)
         p.putFloat("look.scale", l.scale)
+        p.put("look.scaleAuto", "1")
         runCatching { p.flush() }
     }
 }

@@ -185,6 +185,33 @@ fun ThemeMode.isDark(): Boolean = when (this) {
     ThemeMode.System -> isSystemInDarkTheme()
 }
 
+/**
+ * Масштаб интерфейса поверх системного. «Авто» подбирает его по размеру экрана: Windows на 2560×1440 часто
+ * оставляет 100%, и окно, свёрстанное под 1080p, выглядит крошечным. Считаем по рабочей области в логических
+ * пикселях (уже с учётом системного масштаба), так что на 2560×1440 при 125–150% добавки почти нет.
+ */
+object UiScale {
+    /** Подобранный для экрана, где сейчас окно. */
+    var auto by mutableStateOf(1f)
+
+    fun of(look: Look): Float = if (look.scale > 0f) look.scale else auto
+
+    fun compute(gc: java.awt.GraphicsConfiguration): Float {
+        val a = workArea(gc)
+        val s = minOf(a.height / 1000f, a.width / 1600f)
+        return (kotlin.math.round(s * 20f) / 20f).coerceIn(1f, 2f)
+    }
+
+    fun update(gc: java.awt.GraphicsConfiguration?) {
+        gc ?: return
+        val s = runCatching { compute(gc) }.getOrNull() ?: return
+        if (s != auto) {
+            Log.i("look", "Автомасштаб для экрана ${gc.bounds.width}x${gc.bounds.height}: ${(s * 100).toInt()}%")
+            auto = s
+        }
+    }
+}
+
 @Composable
 fun EbisTheme(mode: ThemeMode, look: Look = Look(), content: @Composable () -> Unit) {
     val dark = mode.isDark()
@@ -195,7 +222,7 @@ fun EbisTheme(mode: ThemeMode, look: Look = Look(), content: @Composable () -> U
     MaterialTheme(colorScheme = if (s.isDark) darkColorScheme() else lightColorScheme()) {
         CompositionLocalProvider(
             LocalTextStyle provides TextStyle(fontFamily = look.font.family(), color = s.ink),
-            LocalDensity provides Density(base.density * look.scale, base.fontScale),
+            LocalDensity provides Density(base.density * UiScale.of(look), base.fontScale),
         ) {
             content()
         }

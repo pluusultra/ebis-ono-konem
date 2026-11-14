@@ -75,6 +75,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.awt.ComposeWindow
@@ -84,6 +85,9 @@ import java.awt.Cursor
 import java.awt.Frame
 import java.awt.MouseInfo
 import java.awt.Rectangle
+import java.awt.Dimension
+import java.awt.GraphicsConfiguration
+import java.awt.GraphicsEnvironment
 import java.awt.Toolkit
 import java.time.LocalDate
 import java.util.prefs.Preferences
@@ -92,75 +96,273 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-/** Размер окна: один и тот же всегда, растягивать нельзя. */
-val WindowSize = androidx.compose.ui.unit.DpSize(1100.dp, 760.dp)
+/** Размер окна при первом запуске на масштабе 100%; дальше — какой человек сам растянул. */
+val DefaultWindowSize = DpSize(1100.dp, 760.dp)
+
+/** Меньше — вёрстка уже не помещается даже в узком режиме. */
+val MinWindowSize = DpSize(560.dp, 460.dp)
+
+/** Рабочая область экрана (без панели задач) в тех же единицах, что и размер окна. */
+fun workArea(gc: GraphicsConfiguration): Rectangle {
+    val b = gc.bounds
+    val i = Toolkit.getDefaultToolkit().getScreenInsets(gc)
+    return Rectangle(b.x + i.left, b.y + i.top, b.width - i.left - i.right, b.height - i.top - i.bottom)
+}
+
+private fun defaultScreen(): GraphicsConfiguration =
+    GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.defaultConfiguration
 
 /**
- * Окно без системной рамки фиксированного размера: перетаскивание за шапку, свернуть, спрятать в трей.
- * Положение запоминается.
+ * Окно без системной рамки: перетаскивание за шапку, растягивание за края, двойной клик по шапке — во весь экран,
+ * свернуть, спрятать в трей. Положение, размер и «во весь экран» запоминаются.
  */
 class WindowFrame(val window: ComposeWindow, private val prefs: Preferences) {
     /** Что сделать, когда содержимое доиграет анимацию исчезновения (свернуть, спрятать, выйти). */
     var exit by mutableStateOf<(() -> Unit)?>(null)
 
-    /** Окно с прошлого раза; если тот экран отключили — по центру текущего. */
+    val maximized get() = window.extendedState and Frame.MAXIMIZED_BOTH == Frame.MAXIMIZED_BOTH
+
+    /** То же, но для Compose: по нему прячутся ручки растягивания. */
+    var isMaximized by mutableStateOf(false)
+        private set
+
+    /** Сколько раз окно возвращалось на экран (из трея или из свёрнутого) — для журнала первых кадров. */
+    var shows by mutableStateOf(0)
+        private set
+
+    private fun states(s: Int) = buildList {
+        if (s and Frame.ICONIFIED != 0) add("свёрнуто")
+        if (s and Frame.MAXIMIZED_BOTH == Frame.MAXIMIZED_BOTH) add("развёрнуто")
+        if (isEmpty()) add("обычное")
+    }.joinToString("+")
+
+    private fun awt(why: String) =
+        WinDebug.log("AWT $why: ${window.width}x${window.height} @${window.x},${window.y}, ${states(window.extendedState)}")
+
+    init {
+        window.addWindowStateListener { e ->
+            isMaximized = maximized
+            WinDebug.mark()
+            Log.i("win", "Состояние: ${states(e.oldState)} → ${states(e.newState)}; окно ${window.width}x${window.height} @${window.x},${window.y}")
+        }
+        window.addComponentListener(object : java.awt.event.ComponentAdapter() {
+            override fun componentResized(e: java.awt.event.ComponentEvent?) = awt("размер")
+            override fun componentMoved(e: java.awt.event.ComponentEvent?) = awt("сдвиг")
+            override fun componentShown(e: java.awt.event.ComponentEvent?) { WinDebug.mark(); WinDebug.log("AWT показано") }
+            override fun componentHidden(e: java.awt.event.ComponentEvent?) { WinDebug.mark(); WinDebug.log("AWT спрятано") }
+        })
+        window.addWindowListener(object : java.awt.event.WindowAdapter() {
+            override fun windowIconified(e: java.awt.event.WindowEvent?) { WinDebug.mark(); WinDebug.log("событие: свернули") }
+            override fun windowDeiconified(e: java.awt.event.WindowEvent?) { WinDebug.mark(); WinDebug.log("событие: развернули") }
+            override fun windowActivated(e: java.awt.event.WindowEvent?) = WinDebug.log("событие: активно")
+            override fun windowDeactivated(e: java.awt.event.WindowEvent?) = WinDebug.log("событие: неактивно")
+        })
+    }
+
+    /** Окно с прошлого раза; если тот экран отключили — по центру текущего. Размер уже выставлен из [initialSize]. */
     fun restoreBounds() {
-        val w = window.width
-        val h = window.height
+        window.minimumSize = Dimension(MinWindowSize.width.value.toInt(), MinWindowSize.height.value.toInt())
         val x = prefs.getInt("win.x", Int.MIN_VALUE)
         val y = prefs.getInt("win.y", Int.MIN_VALUE)
-        val screens = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices.map { it.defaultConfiguration.bounds }
-        if (x == Int.MIN_VALUE || screens.none { it.intersects(Rectangle(x, y, w, h)) }) {
-            val gc = window.graphicsConfiguration
-            val b = gc.bounds
-            val i = Toolkit.getDefaultToolkit().getScreenInsets(gc)
-            window.setLocation(b.x + i.left + (b.width - i.left - i.right - w) / 2, b.y + i.top + (b.height - i.top - i.bottom - h) / 2)
+        val screens = GraphicsEnvironment.getLocalGraphicsEnvironment().screenDevices.map { it.defaultConfiguration }
+        val home = screens.firstOrNull { x != Int.MIN_VALUE && workArea(it).intersects(Rectangle(x, y, window.width, window.height)) }
+        val area = workArea(home ?: window.graphicsConfiguration)
+        // Сохранённый размер мог остаться от большого монитора — не даём окну вылезти за экран.
+        val w = window.width.coerceAtMost(area.width)
+        val h = window.height.coerceAtMost(area.height)
+        if (home == null) {
+            window.setBounds(area.x + (area.width - w) / 2, area.y + (area.height - h) / 2, w, h)
         } else {
-            window.setLocation(x, y)
+            window.setBounds(x.coerceIn(area.x - w + 120, area.x + area.width - 120), y.coerceIn(area.y, area.y + area.height - 60), w, h)
         }
+        if (prefs.getBoolean("win.max", false)) maximize()
     }
 
     /** Свернуть сразу, без затухания. */
     fun minimize() {
+        WinDebug.mark()
+        WinDebug.log("Кнопка «Свернуть»")
         window.extendedState = window.extendedState or Frame.ICONIFIED
     }
 
-    fun save() {
-        prefs.putInt("win.x", window.x)
-        prefs.putInt("win.y", window.y)
+    /** Во весь экран, но без панели задач: у окна без рамки Windows иначе закрывает и её. */
+    private fun maximize() {
+        val a = workArea(window.graphicsConfiguration)
+        // maximizedBounds считается от левого верхнего угла своего экрана.
+        val b = window.graphicsConfiguration.bounds
+        window.maximizedBounds = Rectangle(a.x - b.x, a.y - b.y, a.width, a.height)
+        window.extendedState = window.extendedState or Frame.MAXIMIZED_BOTH
+    }
+
+    fun toggleMaximize() {
+        if (maximized) window.extendedState = window.extendedState and Frame.MAXIMIZED_BOTH.inv() else maximize()
+        prefs.putBoolean("win.max", maximized)
         runCatching { prefs.flush() }
     }
 
-    /** Тащим окно за шапку. */
+    fun save() {
+        prefs.putBoolean("win.max", maximized)
+        // Во весь экран — помним обычные размеры, чтобы было куда вернуться.
+        if (!maximized && window.extendedState and Frame.ICONIFIED == 0) {
+            prefs.putInt("win.x", window.x)
+            prefs.putInt("win.y", window.y)
+            prefs.putInt("win.w", window.width)
+            prefs.putInt("win.h", window.height)
+        }
+        runCatching { prefs.flush() }
+    }
+
+    /** Окно снова на экране — просим перерисовать (без смены размера: она перекладывала бы вёрстку). */
+    fun refresh() {
+        WinDebug.mark()
+        shows++
+        javax.swing.SwingUtilities.invokeLater {
+            if (window.isShowing && window.extendedState and Frame.ICONIFIED == 0) window.repaint()
+        }
+    }
+
+    /** Масштаб интерфейса поменялся — окно растёт или сжимается вместе с ним, оставаясь на месте. */
+    fun scaleBy(k: Float) {
+        if (maximized || k == 1f) return
+        val a = workArea(window.graphicsConfiguration)
+        val min = window.minimumSize
+        val w = (window.width * k).toInt().coerceIn(min.width, a.width)
+        val h = (window.height * k).toInt().coerceIn(min.height, a.height)
+        val cx = window.x + window.width / 2
+        val cy = window.y + window.height / 2
+        window.setBounds((cx - w / 2).coerceIn(a.x, a.x + a.width - w), (cy - h / 2).coerceIn(a.y, a.y + a.height - h), w, h)
+        save()
+    }
+
+    /** Тащим окно за шапку. Развёрнутое сначала возвращается к обычному размеру и едет под мышкой. */
     fun dragStart(): (Int, Int) -> Unit {
         val m0 = MouseInfo.getPointerInfo().location
-        val origin = window.location
-        return { mx, my -> window.setLocation(origin.x + mx - m0.x, origin.y + my - m0.y) }
+        var origin = window.location
+        var unmax = maximized
+        return { mx, my ->
+            if (unmax) {
+                unmax = false
+                val wasW = window.width
+                window.extendedState = window.extendedState and Frame.MAXIMIZED_BOTH.inv()
+                val w = prefs.getInt("win.w", window.width)
+                origin = java.awt.Point(m0.x - ((m0.x - window.x).toFloat() / wasW * w).toInt(), m0.y - 20)
+                window.setSize(w, prefs.getInt("win.h", window.height))
+            }
+            window.setLocation(origin.x + mx - m0.x, origin.y + my - m0.y)
+        }
+    }
+
+    /** Тянем за край или угол: противоположная сторона стоит на месте. */
+    fun resizeStart(e: Edge): (Int, Int) -> Unit {
+        val m0 = MouseInfo.getPointerInfo().location
+        val b = window.bounds
+        val min = window.minimumSize
+        return { mx, my ->
+            val dx = mx - m0.x
+            val dy = my - m0.y
+            var x = b.x
+            var y = b.y
+            var w = b.width
+            var h = b.height
+            if (e.right) w = maxOf(min.width, b.width + dx)
+            if (e.left) { w = maxOf(min.width, b.width - dx); x = b.x + b.width - w }
+            if (e.bottom) h = maxOf(min.height, b.height + dy)
+            if (e.top) { h = maxOf(min.height, b.height - dy); y = b.y + b.height - h }
+            window.setBounds(x, y, w, h)
+        }
+    }
+
+    companion object {
+        /** Размер на старте: прошлый, а в первый раз — стандартный, увеличенный под масштаб и не больше экрана. */
+        fun initialSize(prefs: Preferences, scale: Float): DpSize {
+            val a = workArea(defaultScreen())
+            val w = prefs.getInt("win.w", (DefaultWindowSize.width.value * scale).toInt())
+            val h = prefs.getInt("win.h", (DefaultWindowSize.height.value * scale).toInt())
+            return DpSize(
+                w.coerceIn(MinWindowSize.width.value.toInt(), maxOf(a.width, MinWindowSize.width.value.toInt())).dp,
+                h.coerceIn(MinWindowSize.height.value.toInt(), maxOf(a.height, MinWindowSize.height.value.toInt())).dp,
+            )
+        }
     }
 }
 
-/** Жест «держу и тащу» в экранных координатах; кнопки внутри съедают нажатие сами. */
-private fun Modifier.screenDrag(start: () -> ((Int, Int) -> Unit), onEnd: () -> Unit = {}): Modifier =
-    pointerInput(Unit) {
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = true)
-            val move = start()
-            var moved = false
-            val m0 = MouseInfo.getPointerInfo().location
-            while (true) {
-                val ev = awaitPointerEvent()
-                val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
-                if (!ch.pressed) break
-                val m = MouseInfo.getPointerInfo().location
-                if (!moved && (abs(m.x - m0.x) > 3 || abs(m.y - m0.y) > 3)) moved = true
-                if (moved) {
-                    move(m.x, m.y)
-                    ch.consume()
-                }
+/** Край или угол окна, за который тянут. */
+enum class Edge(val left: Boolean, val top: Boolean, val right: Boolean, val bottom: Boolean, val cursor: Int) {
+    N(false, true, false, false, Cursor.N_RESIZE_CURSOR),
+    S(false, false, false, true, Cursor.S_RESIZE_CURSOR),
+    W(true, false, false, false, Cursor.W_RESIZE_CURSOR),
+    E(false, false, true, false, Cursor.E_RESIZE_CURSOR),
+    NW(true, true, false, false, Cursor.NW_RESIZE_CURSOR),
+    NE(false, true, true, false, Cursor.NE_RESIZE_CURSOR),
+    SW(true, false, false, true, Cursor.SW_RESIZE_CURSOR),
+    SE(false, false, true, true, Cursor.SE_RESIZE_CURSOR),
+}
+
+/** Невидимые полоски по краям и уголки — за них окно растягивается. */
+@Composable
+fun BoxScope.ResizeEdges(frame: WindowFrame) {
+    if (frame.isMaximized) return
+    val t = 5.dp
+    val c = 12.dp
+    @Composable
+    fun Handle(e: Edge, m: Modifier) = Box(
+        m.pointerHoverIcon(PointerIcon(Cursor(e.cursor)))
+            .screenDrag({ frame.resizeStart(e) }, onEnd = frame::save, threshold = 0),
+    )
+    Handle(Edge.N, Modifier.align(Alignment.TopCenter).fillMaxWidth().height(t))
+    Handle(Edge.S, Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(t))
+    Handle(Edge.W, Modifier.align(Alignment.CenterStart).fillMaxHeight().width(t))
+    Handle(Edge.E, Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(t))
+    Handle(Edge.NW, Modifier.align(Alignment.TopStart).size(c))
+    Handle(Edge.NE, Modifier.align(Alignment.TopEnd).size(c))
+    Handle(Edge.SW, Modifier.align(Alignment.BottomStart).size(c))
+    Handle(Edge.SE, Modifier.align(Alignment.BottomEnd).size(c))
+}
+
+/**
+ * Жест «держу и тащу» в экранных координатах; кнопки внутри съедают нажатие сами.
+ * Два щелчка подряд без сдвига — [onDoubleClick].
+ */
+private fun Modifier.screenDrag(
+    start: () -> ((Int, Int) -> Unit),
+    onEnd: () -> Unit = {},
+    threshold: Int = 3,
+    onDoubleClick: (() -> Unit)? = null,
+): Modifier = pointerInput(Unit) {
+    var lastTap = 0L
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = true)
+        val m0 = MouseInfo.getPointerInfo().location
+        var move: ((Int, Int) -> Unit)? = null
+        var clean = true
+        while (true) {
+            val ev = awaitPointerEvent()
+            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+            if (!ch.pressed) {
+                if (ch.isConsumed) clean = false
+                break
             }
-            if (moved) onEnd()
+            val m = MouseInfo.getPointerInfo().location
+            if (move == null && (abs(m.x - m0.x) > threshold || abs(m.y - m0.y) > threshold)) move = start()
+            move?.let {
+                it(m.x, m.y)
+                ch.consume()
+            }
+        }
+        if (move != null) {
+            onEnd()
+            lastTap = 0L
+        } else if (clean && onDoubleClick != null) {
+            val now = System.currentTimeMillis()
+            if (now - lastTap < 450) {
+                lastTap = 0L
+                onDoubleClick()
+            } else {
+                lastTap = now
+            }
         }
     }
+}
 
 // ── Шапка ──────────────────────────────────────────────────────
 
@@ -188,7 +390,7 @@ fun Header(state: AppState, frame: WindowFrame?, today: LocalDate, width: Dp, on
                 drawLine(Palette.OnHay, Offset(0f, size.height - w / 2), Offset(size.width, size.height - w / 2), w)
             }
             .clipToBounds()
-            .then(if (frame != null) Modifier.screenDrag({ frame.dragStart() }, onEnd = frame::save) else Modifier)
+            .then(if (frame != null) Modifier.screenDrag({ frame.dragStart() }, onEnd = frame::save, onDoubleClick = frame::toggleMaximize) else Modifier)
             .onMouse { mouse = it },
     ) {
         val alive = lively()
@@ -269,6 +471,29 @@ fun Header(state: AppState, frame: WindowFrame?, today: LocalDate, width: Dp, on
 private fun WindowControls(frame: WindowFrame, tray: Boolean, onHide: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         WindowButton("Свернуть", onClick = frame::minimize) { drawLine(it, Offset(size.width * 0.18f, size.height * 0.5f), Offset(size.width * 0.82f, size.height * 0.5f), 2.4.dp.toPx(), StrokeCap.Round) }
+        val max = frame.isMaximized
+        WindowButton(if (max) "Восстановить" else "Во весь экран", onClick = frame::toggleMaximize) { c ->
+            val sw = 2.2.dp.toPx()
+            val r = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
+            val st = Stroke(sw)
+            if (max) {
+                // Два окна друг за другом: заднее выглядывает справа сверху.
+                val w = size.width - sw
+                val h = size.height - sw
+                val o = sw / 2
+                val s = w * 0.7f
+                // Переднее окно — слева снизу, целиком.
+                drawRoundRect(c, Offset(o, o + h - s), androidx.compose.ui.geometry.Size(s, s), r, style = st)
+                // Заднее — только то, что не закрыто передним: верх и правый край.
+                val bx = o + w - s
+                drawLine(c, Offset(bx, o + h - s), Offset(bx, o), sw, StrokeCap.Round)
+                drawLine(c, Offset(bx, o), Offset(o + w, o), sw, StrokeCap.Round)
+                drawLine(c, Offset(o + w, o), Offset(o + w, o + s), sw, StrokeCap.Round)
+                drawLine(c, Offset(o + w, o + s), Offset(o + s, o + s), sw, StrokeCap.Round)
+            } else {
+                drawRoundRect(c, Offset(sw / 2, sw / 2), androidx.compose.ui.geometry.Size(size.width - sw, size.height - sw), r, style = st)
+            }
+        }
         WindowButton(if (tray) "Спрятать в трей" else "Закрыть", danger = true, onClick = onHide) { cross(it, 2.4.dp.toPx()) }
     }
 }

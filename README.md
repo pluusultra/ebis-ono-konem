@@ -132,9 +132,6 @@ packaging/  установщик Windows (Inno Setup), deb / AppImage / tar.gz �
 
 Подробно — установщики, пакеты, подпись APK, как всё устроено: **[docs/BUILDING.md](docs/BUILDING.md)**.
 
-Релиз собирает GitHub Actions: `git tag v2.1.0 && git push origin v2.1.0` → APK, установщик Windows,
-AppImage, deb, rpm и остальное появляются в релизе сами. Подробнее — в [docs/RELEASING.md](docs/RELEASING.md).
-
 ## Участие
 
 Баги и идеи — в [Issues](https://github.com/pluusultra/ebis-ono-konem/issues). Пулл-реквесты приветствуются,

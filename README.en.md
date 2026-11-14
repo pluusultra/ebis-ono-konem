@@ -65,7 +65,7 @@ Kotlin + Jetpack Compose (Android) + Compose Multiplatform (desktop), shared cod
 ./gradlew :shared:test :desktop:test
 ```
 
-Details (in Russian): [docs/BUILDING.md](docs/BUILDING.md), releases: [docs/RELEASING.md](docs/RELEASING.md).
+Details (in Russian): [docs/BUILDING.md](docs/BUILDING.md).
 
 ## License
 

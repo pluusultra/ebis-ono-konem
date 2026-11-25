@@ -25,6 +25,22 @@ object TaskRepo {
     /** Надгробия удалённых задач: id → когда удалили. Нужны для слияния с файлом с ПК. */
     private var deleted: Map<Long, Long> = emptyMap()
 
+    /** Заведённые теги (название и цвет). Лежат в том же файле, что и задачи. */
+    var tags by mutableStateOf<List<Tag>>(emptyList())
+        private set
+
+    private var deletedTags: Map<Long, Long> = emptyMap()
+
+    /** Всё текущее состояние одним куском — для записи и слияния. */
+    private fun current() = TaskData(tasks, deleted, tags = tags, deletedTags = deletedTags)
+
+    private fun take(data: TaskData) {
+        tasks = data.tasks
+        deleted = data.deleted
+        tags = data.tags
+        deletedTags = data.deletedTags
+    }
+
     /** В списке только нетронутые обучалки первого запуска. */
     private var seeded = false
 
@@ -38,23 +54,52 @@ object TaskRepo {
         if (::store.isInitialized) return
         store = TaskStore(context.applicationContext)
         val data = store.load() ?: TaskData(seed(), seeded = true).also { store.save(it) }
-        tasks = data.tasks
-        deleted = data.deleted
+        take(data)
         seeded = data.seeded
     }
 
     fun add(
         title: String, desc: String, due: LocalDate, time: Int? = null,
         repeat: Repeat = Repeat.None, hot: Boolean = false, repeatDays: Set<DayOfWeek> = emptySet(),
+        tagIds: Set<Long> = emptySet(),
     ): Long {
-        val (next, id) = TaskOps.add(tasks, title, desc, due, time, repeat, hot, repeatDays)
+        val (next, id) = TaskOps.add(tasks, title, desc, due, time, repeat, hot, repeatDays, tagIds)
         update(next)
         return id
     }
 
     /** Правка: меняются только поля, которые есть в форме. */
-    fun edit(id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean, repeatDays: Set<DayOfWeek>) =
-        update(TaskOps.edit(tasks, id, title, desc, due, time, repeat, hot, repeatDays))
+    fun edit(
+        id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean,
+        repeatDays: Set<DayOfWeek>, tagIds: Set<Long>,
+    ) = update(TaskOps.edit(tasks, id, title, desc, due, time, repeat, hot, repeatDays, tagIds))
+
+    /** Теги меняются сразу с отметкой времени (см. [TagOps]), задачи при этом не трогаются. */
+    private fun updateTags(next: TaskData) {
+        take(next)
+        seeded = false
+        persist(next, now = false)
+    }
+
+    /** id нового тега; название проверяют заранее через [TagOps.problem]. */
+    fun addTag(name: String, color: Int): Long {
+        val (next, id) = TagOps.add(current(), name, color)
+        updateTags(next)
+        return id
+    }
+
+    fun editTag(id: Long, name: String, color: Int) = updateTags(TagOps.edit(current(), id, name, color))
+
+    fun deleteTag(id: Long) = updateTags(TagOps.delete(current(), id))
+
+    /** Теги из бэкапа: незнакомые id добавляются как есть, уже имеющиеся не трогаем. */
+    fun importTags(incoming: List<Tag>) {
+        val known = tags.map { it.id }.toSet()
+        val fresh = incoming.filter { it.id !in known }
+        if (fresh.isEmpty()) return
+        val now = System.currentTimeMillis()
+        updateTags(current().copy(tags = tags + fresh.map { it.copy(updatedAt = now) }, deletedTags = deletedTags - fresh.map { it.id }.toSet()))
+    }
 
     /** Возвращает новое состояние: true — задача теперь сделана. */
     fun toggle(id: Long, sync: Boolean = false): Boolean {
@@ -95,13 +140,13 @@ object TaskRepo {
         if (found.isFailure) { main.post { onDone(false) }; return@execute }
         val existing = found.getOrNull()
         if (existing == null) {
-            store.sync.write(TaskData(tasks, deleted))
+            store.sync.write(current())
             main.post { onDone(store.sync.lastError == null) }
             return@execute
         }
         main.post {
             val before = tasks
-            val merged = if (seeded) existing.copy(seeded = false) else mergeTasks(TaskData(tasks, deleted), existing)
+            val merged = if (seeded) existing.copy(seeded = false) else mergeTasks(current(), existing)
             apply(merged)
             onFound(merged.tasks.size, before)
         }
@@ -111,8 +156,8 @@ object TaskRepo {
     fun pullExternal(onPulled: () -> Unit = {}) = io.execute {
         val ext = store.sync.readIfChanged() ?: return@execute
         main.post {
-            val merged = mergeTasks(TaskData(tasks, deleted), ext)
-            val changed = merged.tasks != tasks
+            val merged = mergeTasks(current(), ext)
+            val changed = merged.tasks != tasks || merged.tags != tags
             apply(merged)
             if (changed) onPulled()
         }
@@ -120,10 +165,9 @@ object TaskRepo {
 
     /** Принять уже готовое состояние как есть, без новых отметок времени. */
     private fun apply(data: TaskData) {
-        tasks = data.tasks
-        deleted = data.deleted
+        take(data)
         seeded = false
-        persist(TaskData(data.tasks, data.deleted), now = false)
+        persist(data.copy(seeded = false), now = false)
         onChanged?.invoke(data.tasks)
     }
 
@@ -133,9 +177,8 @@ object TaskRepo {
      */
     private fun update(newTasks: List<Task>, sync: Boolean = false) {
         if (newTasks == tasks) return
-        val data = TaskOps.stamp(tasks, newTasks, deleted)
-        tasks = data.tasks
-        deleted = data.deleted
+        val data = TaskOps.stamp(current(), newTasks)
+        take(data)
         seeded = false
         persist(data, now = sync)
         onChanged?.invoke(data.tasks)
@@ -148,16 +191,15 @@ object TaskRepo {
     private fun persist(data: TaskData, now: Boolean) {
         val job = {
             val out = store.save(data)
-            if (out.tasks != data.tasks || out.deleted != data.deleted) main.post { adopt(out) }
+            if (out.copy(seeded = false) != data.copy(seeded = false)) main.post { adopt(out) }
         }
         if (now) job() else io.execute(job)
     }
 
     private fun adopt(written: TaskData) {
-        val merged = mergeTasks(TaskData(tasks, deleted), written)
-        if (merged.tasks == tasks && merged.deleted == deleted) return
-        tasks = merged.tasks
-        deleted = merged.deleted
+        val merged = mergeTasks(current(), written)
+        if (merged == current()) return
+        take(merged)
         persist(merged, now = false)
         onChanged?.invoke(merged.tasks)
     }

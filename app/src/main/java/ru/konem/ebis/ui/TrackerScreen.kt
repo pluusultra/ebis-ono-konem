@@ -100,7 +100,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.konem.ebis.R
 import ru.konem.ebis.data.Repeat
+import ru.konem.ebis.data.TagOps
 import ru.konem.ebis.data.Task
+import ru.konem.ebis.data.TaskRepo
 import ru.konem.ebis.data.toLocalDate
 import ru.konem.ebis.ui.theme.Body
 import ru.konem.ebis.ui.theme.Display
@@ -189,6 +191,8 @@ fun TrackerScreen(
     bestStreak: Int,
     newFirst: Boolean,
     onToggleSort: () -> Unit,
+    tagFilter: Set<Long> = emptySet(),
+    onTagFilter: (Set<Long>) -> Unit = {},
 ) {
     val today = LocalDate.now()
     val counts = Tab.entries.associateWith { filterTasks(tasks, it, today).size }
@@ -235,7 +239,7 @@ fun TrackerScreen(
                 },
                 label = "tabPage",
             ) { t ->
-                TaskPage(t, tasks, today, intro, actions, streak, bestStreak, newFirst, onToggleSort)
+                TaskPage(t, tasks, today, intro, actions, streak, bestStreak, newFirst, onToggleSort, tagFilter, onTagFilter, onSettings)
             }
         }
 
@@ -278,8 +282,15 @@ private fun TaskPage(
     bestStreak: Int,
     newFirst: Boolean,
     onToggleSort: () -> Unit,
+    tagFilter: Set<Long>,
+    onTagFilter: (Set<Long>) -> Unit,
+    onManageTags: () -> Unit,
 ) {
-    val rows = remember(tasks, tab, today, newFirst) { buildRows(tab, tasks, today, newFirst) }
+    val rows = remember(tasks, tab, today, newFirst, tagFilter) {
+        buildRows(tab, tasks.filter { TagOps.matches(it, tagFilter) }, today, newFirst)
+    }
+    val tabTotal = remember(tasks, tab, today) { filterTasks(tasks, tab, today).size }
+    val tags = TaskRepo.tags
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val listState = rememberLazyListState()
     val haptic = LocalHapticFeedback.current
@@ -320,13 +331,29 @@ private fun TaskPage(
                 Stats(doneToday, streak, bestStreak, Modifier.animateItem(placementSpec = Motion.placement))
             }
         }
-        if (tab == Tab.Today && rows.size > 1) {
+        val showSort = tab == Tab.Today && tabTotal > 1
+        if (showSort || tags.isNotEmpty()) {
             item(key = "sort") {
-                SortToggle(newFirst, onToggleSort, Modifier.animateItem(placementSpec = Motion.placement))
+                TagFilterBar(tagFilter, onTagFilter, onManageTags, Modifier.animateItem(placementSpec = Motion.placement)) {
+                    if (showSort) SortToggle(newFirst, onToggleSort)
+                }
             }
         }
         if (rows.isEmpty()) {
-            item(key = "empty_$tab") { Empty(tab, Modifier.animateItem()) }
+            if (tagFilter.isNotEmpty() && tabTotal > 0) {
+                item(key = "empty_filter") {
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 36.dp).animateItem(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("С такими тегами тут пусто", fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        GhostChip("Показать всё") { onTagFilter(emptySet()) }
+                    }
+                }
+            } else {
+                item(key = "empty_$tab") { Empty(tab, Modifier.animateItem()) }
+            }
         }
         var index = 0
         shown.forEach { row ->
@@ -605,12 +632,12 @@ private fun Banner(text: String, onDismiss: () -> Unit) {
 
 /** Переключатель порядка во вкладке «Сегодня»: новые сверху / старые сверху. */
 @Composable
-private fun SortToggle(newFirst: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun SortToggle(newFirst: Boolean, onClick: () -> Unit) {
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val p by animateFloatAsState(if (pressed) 1f else 0f, Motion.snappy(), label = "sortPress")
     val rot by animateFloatAsState(if (newFirst) 0f else 180f, Motion.bouncy(), label = "sortRot")
-    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+    Box(contentAlignment = Alignment.CenterEnd) {
         Row(
             Modifier
                 .offset(2.dp * p, 2.dp * p)
@@ -811,6 +838,7 @@ private fun TaskCard(
                     if (task.hot && !task.done) Badge("🔥 горит", Copy.BadgeKind.Late)
                     task.time?.let { Badge("⏰ " + Copy.fmtTime(it), Copy.BadgeKind.Normal) }
                     if (task.repeat != Repeat.None) Badge("🔁 " + Copy.repeatLabel(task), Copy.BadgeKind.Normal)
+                    TagOps.of(task, TaskRepo.tags).forEach { TagBadge(it) }
                 }
             }
 

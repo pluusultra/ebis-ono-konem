@@ -18,26 +18,27 @@ object TaskOps {
     fun add(
         tasks: List<Task>, title: String, desc: String, due: LocalDate,
         time: Int? = null, repeat: Repeat = Repeat.None, hot: Boolean = false,
-        repeatDays: Set<DayOfWeek> = emptySet(),
+        repeatDays: Set<DayOfWeek> = emptySet(), tagIds: Set<Long> = emptySet(),
     ): Pair<List<Task>, Long> {
         val id = nextId(tasks)
         val task = Task(
             id = id, title = title, desc = desc, due = repeat.firstDue(due, repeatDays), time = time,
-            repeat = repeat, hot = hot, order = nextOrder(tasks), repeatDays = repeatDays,
+            repeat = repeat, hot = hot, order = nextOrder(tasks), repeatDays = repeatDays, tagIds = tagIds,
         )
         return tasks + task to id
     }
 
-    /** Правка: меняются только поля, которые есть в форме. */
+    /** Правка: меняются только поля, которые есть в форме. [tagIds] = null — теги не трогаем. */
     fun edit(
         tasks: List<Task>, id: Long, title: String, desc: String, due: LocalDate,
         time: Int?, repeat: Repeat, hot: Boolean, repeatDays: Set<DayOfWeek> = emptySet(),
+        tagIds: Set<Long>? = null,
     ) = tasks.map {
         if (it.id != id) return@map it
         val scheduleChanged = due != it.due || repeat != it.repeat || repeatDays != it.repeatDays
         it.copy(
             title = title, desc = desc, due = if (scheduleChanged) repeat.firstDue(due, repeatDays) else due,
-            time = time, repeat = repeat, hot = hot, repeatDays = repeatDays,
+            time = time, repeat = repeat, hot = hot, repeatDays = repeatDays, tagIds = tagIds ?: it.tagIds,
         )
     }
 
@@ -91,6 +92,10 @@ object TaskOps {
         val alive = stamped.map { it.id }.toSet()
         return TaskData(stamped, deleted.filterKeys { it !in alive } + before.keys.filter { it !in alive }.associateWith { now })
     }
+
+    /** То же, но теги и их надгробия переезжают из [data] как есть. */
+    fun stamp(data: TaskData, new: List<Task>, now: Long = System.currentTimeMillis()): TaskData =
+        stamp(data.tasks, new, data.deleted, now).copy(tags = data.tags, deletedTags = data.deletedTags)
 }
 
 /** Срез задач на конкретный день: всё, что нужно уведомлениям и подписи в шапке. */

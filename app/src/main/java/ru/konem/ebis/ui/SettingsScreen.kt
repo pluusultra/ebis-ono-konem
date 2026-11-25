@@ -173,20 +173,24 @@ private fun SettingsContent(onClose: () -> Unit, toast: ToastState) {
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         val ok = runCatching {
-            ctx.contentResolver.openOutputStream(uri)!!.use { it.write(TaskStore.backup(TaskRepo.tasks).toByteArray()) }
+            val data = ru.konem.ebis.data.TaskData(TaskRepo.tasks, tags = TaskRepo.tags)
+            ctx.contentResolver.openOutputStream(uri)!!.use { it.write(TaskStore.backup(data).toByteArray()) }
         }.isSuccess
         val n = TaskRepo.tasks.size
         onToast(if (ok) "Сохранил $n ${Copy.plural(n, "задачу", "задачи", "задач")}. Береги файл" else "Не смог записать файл. Конь в шоке")
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val loaded = runCatching {
-            TaskStore.parse(ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) })
+        val data = runCatching {
+            TaskStore.parseData(ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) })
         }.getOrNull()
+        val loaded = data?.tasks
         if (loaded == null) {
             onToast("Это не бэкап коня. Подсунь нормальный файл")
         } else {
             val before = TaskRepo.snapshot()
+            // Теги из бэкапа добавляются к своим (свои не трогаем), чтобы у задач не пропали плашки.
+            TaskRepo.importTags(data.tags)
             TaskRepo.replaceAll(loaded)
             val n = loaded.size
             toast.show("Загрузил $n ${Copy.plural(n, "задачу", "задачи", "задач")}", Copy.undoLabel) { TaskRepo.restore(before) }
@@ -292,6 +296,10 @@ private fun SettingsContent(onClose: () -> Unit, toast: ToastState) {
                     save { this.mutedDay = -1 }
                     mutedDay = -1
                 }
+            }
+
+            Section("🏷 Теги", "Заведи заранее — потом в задаче просто натыкай, а над списком фильтруй. Тап по тегу — правка") {
+                TagsManager(onToast)
             }
 
             Section("🌗 Тема", "Днём — сено, ночью — чёрная конюшня") {

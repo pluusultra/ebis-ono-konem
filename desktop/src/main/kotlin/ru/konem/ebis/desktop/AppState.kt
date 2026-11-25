@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import ru.konem.ebis.data.Repeat
+import ru.konem.ebis.data.TagOps
 import ru.konem.ebis.data.Task
 import ru.konem.ebis.data.TaskData
 import ru.konem.ebis.data.TaskOps
@@ -100,7 +101,7 @@ class AppState(val store: DesktopStore) {
 
     private fun update(newTasks: List<Task>) {
         if (newTasks == data.tasks) return
-        val next = TaskOps.stamp(data.tasks, newTasks, data.deleted)
+        val next = TaskOps.stamp(data, newTasks)
         // save вливает то, что успело прийти с телефона, и возвращает итог.
         data = store.save(next)
         refreshStatus()
@@ -122,22 +123,67 @@ class AppState(val store: DesktopStore) {
 
     fun add(
         title: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean,
-        desc: String = "", repeatDays: Set<DayOfWeek> = emptySet(),
+        desc: String = "", repeatDays: Set<DayOfWeek> = emptySet(), tagIds: Set<Long> = emptySet(),
     ) {
         if (title.isBlank()) {
             show(Copy.emptyTitle)
             return
         }
-        update(TaskOps.add(data.tasks, title.trim(), desc.trim(), due, time, repeat, hot, repeatDays).first)
+        update(TaskOps.add(data.tasks, title.trim(), desc.trim(), due, time, repeat, hot, repeatDays, tagIds).first)
         show(Copy.saved)
     }
 
-    fun edit(id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean, repeatDays: Set<DayOfWeek>) {
+    fun edit(
+        id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean,
+        repeatDays: Set<DayOfWeek>, tagIds: Set<Long>,
+    ) {
         if (title.isBlank()) {
             show(Copy.emptyTitle)
             return
         }
-        withUndo(Copy.edited) { update(TaskOps.edit(data.tasks, id, title.trim(), desc.trim(), due, time, repeat, hot, repeatDays)) }
+        withUndo(Copy.edited) { update(TaskOps.edit(data.tasks, id, title.trim(), desc.trim(), due, time, repeat, hot, repeatDays, tagIds)) }
+    }
+
+    // ── Теги ──
+
+    val tags get() = data.tags
+
+    /** Фильтр ленты по тегам: пусто — показываем всё. Живёт до закрытия программы. */
+    var tagFilter by mutableStateOf<Set<Long>>(emptySet())
+        private set
+
+    fun toggleTagFilter(id: Long) {
+        tagFilter = if (id in tagFilter) tagFilter - id else tagFilter + id
+    }
+
+    fun clearTagFilter() {
+        tagFilter = emptySet()
+    }
+
+    private fun saveTags(next: TaskData) {
+        data = store.save(next)
+        refreshStatus()
+    }
+
+    /** Возвращает id нового тега или null, если название не годится (о причине — тостом). */
+    fun addTag(name: String, color: Int): Long? {
+        TagOps.problem(data.tags, name)?.let { show(it); return null }
+        val (next, id) = TagOps.add(data, name, color)
+        saveTags(next)
+        return id
+    }
+
+    fun editTag(id: Long, name: String, color: Int): Boolean {
+        TagOps.problem(data.tags, name, exceptId = id)?.let { show(it); return false }
+        saveTags(TagOps.edit(data, id, name, color))
+        return true
+    }
+
+    fun deleteTag(id: Long) {
+        val tag = data.tags.firstOrNull { it.id == id } ?: return
+        saveTags(TagOps.delete(data, id))
+        tagFilter = tagFilter - id
+        show("Тег «${tag.name}» — нахер")
     }
 
     fun toggle(id: Long) {
@@ -194,6 +240,6 @@ private fun androidx.compose.ui.graphics.Color.hex() = "#%02X%02X%02X".format((r
 const val DRAFT_ID = -1L
 
 enum class SettingsPane(val icon: String, val title: String) {
-    General("🎛️", "Общее"), Look("🎨", "Оформление"), Notify("🔔", "Уведомления"), Keys("⌨️", "Клавиши"), Sync("🔄", "Синхронизация"),
+    General("🎛️", "Общее"), Tags("🏷️", "Теги"), Look("🎨", "Оформление"), Notify("🔔", "Уведомления"), Keys("⌨️", "Клавиши"), Sync("🔄", "Синхронизация"),
     Report("🐞", "Сломалось?"),
 }

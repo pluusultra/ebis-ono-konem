@@ -12,6 +12,8 @@ import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image as SkImage
 import org.junit.Test
 import ru.konem.ebis.data.Repeat
+import ru.konem.ebis.data.Tag
+import ru.konem.ebis.data.TagColors
 import ru.konem.ebis.data.Task
 import ru.konem.ebis.data.TaskData
 import ru.konem.ebis.data.TaskJson
@@ -38,17 +40,22 @@ class RenderTest {
 
     private fun sample(today: LocalDate): TaskData {
         var id = 1L
-        fun t(title: String, due: LocalDate, desc: String = "", hot: Boolean = false, time: Int? = null, repeat: Repeat = Repeat.None, done: Boolean = false) =
-            Task(id++, title, desc, due, done = done, doneAt = if (done) System.currentTimeMillis() else 0L, time = time, repeat = repeat, hot = hot, updatedAt = 1)
+        fun t(title: String, due: LocalDate, desc: String = "", hot: Boolean = false, time: Int? = null, repeat: Repeat = Repeat.None, done: Boolean = false, tags: Set<Long> = emptySet()) =
+            Task(id++, title, desc, due, done = done, doneAt = if (done) System.currentTimeMillis() else 0L, time = time, repeat = repeat, hot = hot, updatedAt = 1, tagIds = tags)
         return TaskData(
             listOf(
-                t("Оплатить интернет, пока не отрубили", today, hot = true, time = 18 * 60),
-                t("Позвонить маме", today, "Она уже третий раз спрашивает, жив ли", repeat = Repeat.Weekly),
-                t("Разобрать почту", today.minusDays(2)),
-                t("Скинуть Стасу отчёт", today, time = 15 * 60),
+                t("Оплатить интернет, пока не отрубили", today, hot = true, time = 18 * 60, tags = setOf(HOME)),
+                t("Позвонить маме", today, "Она уже третий раз спрашивает, жив ли", repeat = Repeat.Weekly, tags = setOf(FAMILY)),
+                t("Разобрать почту", today.minusDays(2), tags = setOf(WORK)),
+                t("Скинуть Стасу отчёт", today, time = 15 * 60, tags = setOf(WORK)),
                 t("Записаться к зубному", today.plusDays(1)),
-                t("Купить корм коню", today, done = true),
-            )
+                t("Купить корм коню", today, done = true, tags = setOf(HOME)),
+            ),
+            tags = listOf(
+                Tag(WORK, "Работа", TagColors.presets[5], 1),
+                Tag(HOME, "Дом", TagColors.presets[0], 1),
+                Tag(FAMILY, "Семья", TagColors.presets[3], 1),
+            ),
         )
     }
 
@@ -73,6 +80,35 @@ class RenderTest {
     fun renderWindow() {
         screenshot("light", ThemeMode.Light)
         screenshot("dark", ThemeMode.Dark)
+    }
+
+    /** Фильтр по тегу, форма задачи с тегами и раздел настроек «Теги». */
+    @Test
+    fun renderTags() {
+        val dir = Files.createTempDirectory("ebis-preview").toFile()
+        File(dir, DesktopStore.FILE_NAME).writeText(TaskJson.pretty(sample(LocalDate.now())))
+        val node = "ru/konem/ebis-desktop-preview-tags"
+        val state = AppState(DesktopStore(node).apply { folder = dir; todayNewFirst = false })
+        fun shot(name: String) {
+            val img = render(1000, 720) { EbisTheme(ThemeMode.Light) { App(state, remember { FocusRequester() }) { null } } }
+            File(projectDir, "build/preview/$name.png").apply { parentFile.mkdirs() }.writeBytes(img.encodeToData(EncodedImageFormat.PNG)!!.bytes)
+        }
+        state.toggleTagFilter(WORK)
+        shot("tags-filter")
+        state.clearTagFilter()
+        state.editing = state.tasks.first { WORK in it.tagIds }
+        shot("tags-edit")
+        state.editing = null
+        state.openSettings(SettingsPane.Tags)
+        shot("tags-settings")
+        Preferences.userRoot().node(node).removeNode()
+        dir.deleteRecursively()
+    }
+
+    private companion object {
+        const val WORK = 1_000_001L
+        const val HOME = 1_000_002L
+        const val FAMILY = 1_000_003L
     }
 
     /** Окно будильника и раздел «Сломалось?» — глянуть глазами. */

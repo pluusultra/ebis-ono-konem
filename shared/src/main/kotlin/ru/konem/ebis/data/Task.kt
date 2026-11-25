@@ -22,6 +22,8 @@ data class Task(
     /** Когда задачу последний раз меняли (мс). По нему слияние с ПК решает, чья версия новее. */
     val updatedAt: Long = 0L,
     val repeatDays: Set<DayOfWeek> = emptySet(),
+    /** id тегов из [TaskData.tags]. Незнакомые id (тег удалили на другом устройстве) просто не показываются. */
+    val tagIds: Set<Long> = emptySet(),
 )
 
 /**

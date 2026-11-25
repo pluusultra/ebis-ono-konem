@@ -95,6 +95,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import ru.konem.ebis.data.Repeat
+import ru.konem.ebis.data.TagOps
 import ru.konem.ebis.data.Task
 import ru.konem.ebis.data.toLocalDate
 import ru.konem.ebis.ui.Copy
@@ -488,7 +489,8 @@ private fun QuickAdd(state: AppState, today: LocalDate, focus: FocusRequester, c
 
     fun submit() {
         if (text.isBlank()) return
-        state.add(parsed.title, parsed.date ?: today, parsed.time, parsed.repeat ?: Repeat.None, parsed.hot)
+        // При включённом фильтре задача сразу получает его теги — иначе она исчезла бы из ленты.
+        state.add(parsed.title, parsed.date ?: today, parsed.time, parsed.repeat ?: Repeat.None, parsed.hot, tagIds = state.tagFilter)
         val d = parsed.date ?: today
         if (state.tab == Tab.Today && d.isAfter(today)) state.show("Накинул на «${Copy.dayLabel(d, today).lowercase()}» — смотри во «Вся херня»")
         text = ""
@@ -559,7 +561,11 @@ private fun QuickAdd(state: AppState, today: LocalDate, focus: FocusRequester, c
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TaskList(state: AppState, tab: Tab, today: LocalDate, compact: Boolean) {
-    val rows = remember(state.tasks, tab, today, state.newFirst) { buildRows(tab, state.tasks, today, state.newFirst) }
+    val filter = state.tagFilter
+    val rows = remember(state.tasks, tab, today, state.newFirst, filter) {
+        buildRows(tab, state.tasks.filter { TagOps.matches(it, filter) }, today, state.newFirst)
+    }
+    val showSort = tab == Tab.Today && filterTasks(state.tasks, tab, today).size > 1
     val listState = rememberLazyListState()
     val side = if (compact) 14.dp else 24.dp
     Box(Modifier.fillMaxSize()) {
@@ -569,10 +575,18 @@ private fun TaskList(state: AppState, tab: Tab, today: LocalDate, compact: Boole
             contentPadding = PaddingValues(start = side, end = if (compact) 18.dp else 30.dp, top = 10.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (tab == Tab.Today && rows.size > 1) {
-                item(key = "sort") { SortToggle(state.newFirst, state::toggleSort, Modifier.animateItem().entrance(440)) }
+            item(key = "filter") {
+                TagFilterBar(state, Modifier.animateItem().entrance(440)) {
+                    if (showSort) SortToggle(state.newFirst, state::toggleSort)
+                }
             }
-            if (rows.isEmpty()) item(key = "empty_$tab") { Empty(tab, Modifier.animateItem()) }
+            if (rows.isEmpty()) {
+                if (filter.isNotEmpty() && filterTasks(state.tasks, tab, today).isNotEmpty()) {
+                    item(key = "empty_filter") { FilteredEmpty(state, Modifier.animateItem()) }
+                } else {
+                    item(key = "empty_$tab") { Empty(tab, Modifier.animateItem()) }
+                }
+            }
             rows.forEachIndexed { i, row ->
                 when (row) {
                     is Row.Header -> stickyHeader(key = row.key) { SectionHeader(row.label, row.count, Modifier.entrance(460 + i * 55)) }
@@ -587,13 +601,24 @@ private fun TaskList(state: AppState, tab: Tab, today: LocalDate, compact: Boole
 }
 
 @Composable
-private fun SortToggle(newFirst: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun SortToggle(newFirst: Boolean, onClick: () -> Unit) {
     val rot by animateFloatAsState(if (newFirst) 0f else 180f, Motion.bouncy(), label = "sortRot")
-    Box(modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-        BrutalButton(onClick, radius = 50.dp, shadow = 2.dp, border = 2.dp, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
-            Text("↓", fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.graphicsLayer { rotationZ = rot })
-            Text(if (newFirst) "Сначала новые" else "Сначала старые", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        }
+    BrutalButton(onClick, radius = 50.dp, shadow = 2.dp, border = 2.dp, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
+        Text("↓", fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.graphicsLayer { rotationZ = rot })
+        Text(if (newFirst) "Сначала новые" else "Сначала старые", fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
+    }
+}
+
+/** Задачи во вкладке есть, но фильтр по тегам всё спрятал. */
+@Composable
+private fun FilteredEmpty(state: AppState, modifier: Modifier) {
+    Column(
+        modifier.fillMaxWidth().padding(vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("С такими тегами тут пусто", fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+        GhostChip("Показать всё") { state.clearTagFilter() }
     }
 }
 
@@ -650,6 +675,7 @@ private fun TaskCard(task: Task, today: LocalDate, tab: Tab, state: AppState, co
                     if (task.hot && !task.done) Badge("🔥 горит", Copy.BadgeKind.Late)
                     task.time?.let { Badge("⏰ " + Copy.fmtTime(it), Copy.BadgeKind.Normal) }
                     if (task.repeat != Repeat.None) Badge("🔁 " + Copy.repeatLabel(task), Copy.BadgeKind.Normal)
+                    TagOps.of(task, state.tags).forEach { TagBadge(it) }
                 }
             }
             if (!compact) CardActions(task, tab, state, hovered)

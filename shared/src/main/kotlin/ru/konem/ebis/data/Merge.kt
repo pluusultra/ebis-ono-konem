@@ -4,29 +4,40 @@ package ru.konem.ebis.data
  * Слияние двух версий списка (телефон и файл с ПК) по задачам, а не целиком:
  * у каждой задачи побеждает версия с более поздним [Task.updatedAt],
  * удаление побеждает, если оно случилось не раньше последней правки задачи.
+ * Теги сливаются по тем же правилам.
  */
 fun mergeTasks(local: TaskData, remote: TaskData): TaskData {
-    val deleted = (local.deleted.keys + remote.deleted.keys).associateWith { id ->
-        maxOf(local.deleted[id] ?: 0L, remote.deleted[id] ?: 0L)
+    val (tasks, deleted) = mergeById(local.tasks, remote.tasks, local.deleted, remote.deleted, { it.id }, { it.updatedAt })
+    val (tags, deletedTags) = mergeById(local.tags, remote.tags, local.deletedTags, remote.deletedTags, { it.id }, { it.updatedAt })
+    return TaskData(tasks, deleted, tags = tags, deletedTags = deletedTags)
+}
+
+private fun <T> mergeById(
+    localItems: List<T>, remoteItems: List<T>,
+    localDeleted: Map<Long, Long>, remoteDeleted: Map<Long, Long>,
+    id: (T) -> Long, updatedAt: (T) -> Long,
+): Pair<List<T>, Map<Long, Long>> {
+    val deleted = (localDeleted.keys + remoteDeleted.keys).associateWith { k ->
+        maxOf(localDeleted[k] ?: 0L, remoteDeleted[k] ?: 0L)
     }
-    val localById = local.tasks.associateBy { it.id }
-    val remoteById = remote.tasks.associateBy { it.id }
+    val localById = localItems.associateBy(id)
+    val remoteById = remoteItems.associateBy(id)
     // Порядок: сначала как на телефоне, новые из файла — в конец.
-    val ids = (local.tasks.map { it.id } + remote.tasks.map { it.id }).distinct()
-    val tasks = ids.mapNotNull { id ->
-        val l = localById[id]
-        val r = remoteById[id]
+    val ids = (localItems.map(id) + remoteItems.map(id)).distinct()
+    val items = ids.mapNotNull { k ->
+        val l = localById[k]
+        val r = remoteById[k]
         val winner = when {
             l == null -> r
             r == null -> l
-            r.updatedAt > l.updatedAt -> r
+            updatedAt(r) > updatedAt(l) -> r
             else -> l
         } ?: return@mapNotNull null
-        val gone = deleted[id]
-        if (gone != null && gone >= winner.updatedAt) null else winner
+        val gone = deleted[k]
+        if (gone != null && gone >= updatedAt(winner)) null else winner
     }
-    val alive = tasks.map { it.id }.toSet()
-    return TaskData(tasks, deleted.filterKeys { it !in alive })
+    val alive = items.map(id).toSet()
+    return items to deleted.filterKeys { it !in alive }
 }
 
 /**

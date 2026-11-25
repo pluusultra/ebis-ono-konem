@@ -151,6 +151,8 @@ private fun EditDialog(state: AppState, task: Task, today: LocalDate) {
     var repeat by remember(task.id) { mutableStateOf(task.repeat) }
     var repeatDays by remember(task.id) { mutableStateOf(task.repeatDays) }
     var hot by remember(task.id) { mutableStateOf(task.hot) }
+    // Новая задача при включённом фильтре сразу получает выбранные теги — иначе она пропала бы из ленты.
+    var tagIds by remember(task.id) { mutableStateOf(if (task.id == DRAFT_ID) state.tagFilter else task.tagIds) }
     var problem by remember(task.id) { mutableStateOf<String?>(null) }
     val isNew = task.id == DRAFT_ID
     val close = { state.editing = null }
@@ -165,9 +167,11 @@ private fun EditDialog(state: AppState, task: Task, today: LocalDate) {
         if (repeat == Repeat.SelectedDays && days.isEmpty()) return
         if (isNew) {
             if (title.isBlank()) { problem = "Без названия не накину"; return }
-            state.add(title, d, time, repeat, hot, desc, days)
+            val tags = tagIds.filterTo(mutableSetOf()) { id -> state.tags.any { it.id == id } }
+            state.add(title, d, time, repeat, hot, desc, days, tags)
         } else {
-            state.edit(task.id, title, desc, d, time, repeat, hot, days)
+            // Незнакомые id (тег удалили на другом устройстве) не трогаем — пусть живут, как жили.
+            state.edit(task.id, title, desc, d, time, repeat, hot, days, tagIds)
         }
         close()
     }
@@ -231,6 +235,9 @@ private fun EditDialog(state: AppState, task: Task, today: LocalDate) {
             }
             if (repeatDays.isEmpty()) Label("Выбери хотя бы один день")
         }
+
+        Label("Теги")
+        TagPicker(state, tagIds) { tagIds = it }
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             BrutalSwitch(hot) { hot = it }

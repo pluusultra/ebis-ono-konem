@@ -72,6 +72,9 @@ fun AppRoot(vm: TasksViewModel = viewModel()) {
     // Серия читается из настроек; счётчик заставляет перечитать после закрытия всего.
     var streakTick by remember { mutableIntStateOf(0) }
     var newFirst by remember { mutableStateOf(prefs.todayNewFirst) }
+    // Фильтр по тегам: пусто — всё. Удалённые теги из него выпадают сами.
+    var tagFilterSaved by rememberSaveable { mutableStateOf(LongArray(0)) }
+    val tagFilter = tagFilterSaved.filterTo(mutableSetOf()) { id -> TaskRepo.tags.any { it.id == id } }
     val toast = remember { ToastState() }
     val haptic = LocalHapticFeedback.current
 
@@ -219,6 +222,8 @@ fun AppRoot(vm: TasksViewModel = viewModel()) {
                     prefs.todayNewFirst = newFirst
                     Widgets.refresh(ctx)
                 },
+                tagFilter = tagFilter,
+                onTagFilter = { tagFilterSaved = it.toLongArray() },
             )
         }
 
@@ -246,12 +251,13 @@ fun AppRoot(vm: TasksViewModel = viewModel()) {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 neigh = true
             },
+            prefillTags = tagFilter,
             onSave = { d ->
                 sheetOpen = false
                 if (d.id != null) {
-                    withUndo(Copy.edited) { vm.edit(d.id, d.title, d.desc, d.due, d.time, d.repeat, d.hot, d.repeatDays) }
+                    withUndo(Copy.edited) { vm.edit(d.id, d.title, d.desc, d.due, d.time, d.repeat, d.hot, d.repeatDays, d.tagIds) }
                 } else {
-                    vm.add(d.title, d.desc, d.due, d.time, d.repeat, d.hot, d.repeatDays)
+                    vm.add(d.title, d.desc, d.due, d.time, d.repeat, d.hot, d.repeatDays, d.tagIds)
                     tab = if (!d.due.isAfter(LocalDate.now())) Tab.Today else Tab.All
                     toast.show(Copy.saved)
                 }

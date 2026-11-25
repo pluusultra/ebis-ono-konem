@@ -14,6 +14,9 @@ data class TaskData(
     val tasks: List<Task>,
     val deleted: Map<Long, Long> = emptyMap(),
     val seeded: Boolean = false,
+    val tags: List<Tag> = emptyList(),
+    /** Надгробия удалённых тегов: id → когда удалили. */
+    val deletedTags: Map<Long, Long> = emptyMap(),
 )
 
 /** Формат файла задач — один на телефон и ПК. org.json на Android встроен, на ПК подключается библиотекой. */
@@ -42,24 +45,70 @@ object TaskJson {
                         if (t.repeat == Repeat.SelectedDays) {
                             put("repeatDays", JSONArray(t.repeatDays.sorted().map { it.value }))
                         }
+                        if (t.tagIds.isNotEmpty()) put("tags", JSONArray(t.tagIds.toList()))
                     }
             )
         }
         return arr
     }
 
+    private fun tombstonesJson(deleted: Map<Long, Long>, now: Long): JSONArray {
+        val arr = JSONArray()
+        deleted.filterValues { now - it < TOMBSTONE_TTL_MS }.forEach { (id, at) ->
+            arr.put(JSONObject().put("id", id).put("at", at))
+        }
+        return arr
+    }
+
+    private fun tombstones(arr: JSONArray?): Map<Long, Long> = buildMap {
+        arr ?: return@buildMap
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            put(o.getLong("id"), o.getLong("at"))
+        }
+    }
+
+    private fun tagsJson(tags: List<Tag>): JSONArray {
+        val arr = JSONArray()
+        tags.forEach { t ->
+            arr.put(
+                JSONObject()
+                    .put("id", t.id)
+                    .put("name", t.name)
+                    .put("color", TagColors.toHex(t.color))
+                    .put("updatedAt", t.updatedAt)
+            )
+        }
+        return arr
+    }
+
+    private fun parseTags(arr: JSONArray?): List<Tag> {
+        arr ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            val name = o.optString("name", "").trim()
+            if (!o.has("id") || name.isEmpty()) return@mapNotNull null
+            Tag(
+                id = o.getLong("id"),
+                name = name,
+                color = TagColors.fromHex(o.optString("color", "")) ?: TagColors.presets.first(),
+                updatedAt = o.optLong("updatedAt", 0L),
+            )
+        }
+    }
+
     fun toJson(data: TaskData): JSONObject {
         val now = System.currentTimeMillis()
-        val deleted = JSONArray()
-        data.deleted.filterValues { now - it < TOMBSTONE_TTL_MS }.forEach { (id, at) ->
-            deleted.put(JSONObject().put("id", id).put("at", at))
-        }
         return JSONObject()
             .put("app", "ebis-ono-konem")
             .put("version", 3)
             .put("tasks", tasksJson(data.tasks))
-            .put("deleted", deleted)
-            .apply { if (data.seeded) put("seeded", true) }
+            .put("deleted", tombstonesJson(data.deleted, now))
+            .apply {
+                if (data.tags.isNotEmpty()) put("tags", tagsJson(data.tags))
+                if (data.deletedTags.isNotEmpty()) put("deletedTags", tombstonesJson(data.deletedTags, now))
+                if (data.seeded) put("seeded", true)
+            }
     }
 
     /** Понимает голый массив (старый формат), бэкап {"tasks": [...]} и новый с "deleted". Бросает исключение на мусоре. */
@@ -94,16 +143,19 @@ object TaskJson {
                 nextId = o.optLong("nextId", 0L),
                 updatedAt = o.optLong("updatedAt", 0L),
                 repeatDays = repeatDays,
+                tagIds = buildSet {
+                    val ids = o.optJSONArray("tags") ?: return@buildSet
+                    for (index in 0 until ids.length()) ids.optLong(index, 0L).takeIf { it != 0L }?.let(::add)
+                },
             )
         }
-        val deleted = buildMap {
-            val d = obj?.optJSONArray("deleted") ?: return@buildMap
-            for (i in 0 until d.length()) {
-                val o = d.getJSONObject(i)
-                put(o.getLong("id"), o.getLong("at"))
-            }
-        }
-        return TaskData(tasks, deleted, seeded = obj?.optBoolean("seeded", false) ?: false)
+        return TaskData(
+            tasks,
+            tombstones(obj?.optJSONArray("deleted")),
+            seeded = obj?.optBoolean("seeded", false) ?: false,
+            tags = parseTags(obj?.optJSONArray("tags")),
+            deletedTags = tombstones(obj?.optJSONArray("deletedTags")),
+        )
     }
 
     fun parse(text: String): List<Task> = parseData(text).tasks

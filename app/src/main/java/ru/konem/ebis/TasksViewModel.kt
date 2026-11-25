@@ -15,11 +15,15 @@ class TasksViewModel(app: Application) : AndroidViewModel(app) {
 
     val tasks: List<Task> get() = TaskRepo.tasks
 
-    fun add(title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean, repeatDays: Set<DayOfWeek>) =
-        TaskRepo.add(title, desc, due, time, repeat, hot, repeatDays)
+    fun add(
+        title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean,
+        repeatDays: Set<DayOfWeek>, tagIds: Set<Long>,
+    ) = TaskRepo.add(title, desc, due, time, repeat, hot, repeatDays, tagIds)
 
-    fun edit(id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean, repeatDays: Set<DayOfWeek>) =
-        TaskRepo.edit(id, title, desc, due, time, repeat, hot, repeatDays)
+    fun edit(
+        id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean,
+        repeatDays: Set<DayOfWeek>, tagIds: Set<Long>,
+    ) = TaskRepo.edit(id, title, desc, due, time, repeat, hot, repeatDays, tagIds)
 
     fun toggle(id: Long): Boolean = TaskRepo.toggle(id)
     fun postpone(id: Long) = TaskRepo.postpone(id)

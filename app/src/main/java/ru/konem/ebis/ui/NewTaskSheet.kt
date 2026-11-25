@@ -102,6 +102,7 @@ data class Draft(
     val repeat: Repeat,
     val hot: Boolean,
     val repeatDays: Set<DayOfWeek>,
+    val tagIds: Set<Long>,
 )
 
 /**
@@ -118,6 +119,8 @@ fun NewTaskSheet(
     onClose: () -> Unit,
     onNever: () -> Unit,
     onSave: (Draft) -> Unit,
+    /** Теги новой задачи по умолчанию — включённый фильтр, чтобы задача не пропала из списка. */
+    prefillTags: Set<Long> = emptySet(),
 ) {
     AnimatedVisibility(visible, enter = fadeIn(tween(250)), exit = fadeOut(tween(250))) {
         Box(
@@ -133,7 +136,7 @@ fun NewTaskSheet(
         exit = slideOutVertically(tween(260)) { it },
     ) {
         // Содержимое пересоздаётся при каждом открытии, так что форма всегда свежая.
-        SheetContent(editing, prefillTitle, prefillDesc, backEnabled && visible, onClose, onNever, onSave)
+        SheetContent(editing, prefillTitle, prefillDesc, prefillTags, backEnabled && visible, onClose, onNever, onSave)
     }
 }
 
@@ -142,6 +145,7 @@ private fun SheetContent(
     editing: Task?,
     prefillTitle: String,
     prefillDesc: String,
+    prefillTags: Set<Long>,
     backEnabled: Boolean,
     onClose: () -> Unit,
     onNever: () -> Unit,
@@ -162,6 +166,7 @@ private fun SheetContent(
     var repeat by rememberSaveable { mutableStateOf(editing?.repeat ?: Repeat.None) }
     var repeatDays by rememberSaveable { mutableStateOf(ArrayList(editing?.repeatDays.orEmpty())) }
     var hot by rememberSaveable { mutableStateOf(editing?.hot ?: false) }
+    var tagIds by rememberSaveable { mutableStateOf(ArrayList(editing?.tagIds ?: prefillTags)) }
     var error by rememberSaveable { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
@@ -345,6 +350,11 @@ private fun SheetContent(
                     }
                 }
 
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Label("Теги")
+                    TagPicker(tagIds.toSet()) { tagIds = ArrayList(it) }
+                }
+
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -398,7 +408,7 @@ private fun SheetContent(
                                 When.Pick -> picked?.let { LocalDate.ofEpochDay(it) } ?: today
                             }
                             val days = if (repeat == Repeat.SelectedDays) repeatDays.toSet() else emptySet()
-                            onSave(Draft(editing?.id, t, desc.trim(), due, time, repeat, hot, days))
+                            onSave(Draft(editing?.id, t, desc.trim(), due, time, repeat, hot, days, tagIds.toSet()))
                         }
                     },
                     bg = Palette.AccentBg,

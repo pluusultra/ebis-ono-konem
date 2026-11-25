@@ -103,6 +103,7 @@ fun BoxScope.SettingsOverlay(state: AppState, pickFolder: () -> File?, pickColor
                     ) {
                         when (pane) {
                             SettingsPane.General -> GeneralPane(state)
+                            SettingsPane.Tags -> TagsPane(state)
                             SettingsPane.Look -> LookPane(state, pickColor)
                             SettingsPane.Notify -> NotifyPane(state, reminders, pickSound)
                             SettingsPane.Keys -> KeysPane(state)

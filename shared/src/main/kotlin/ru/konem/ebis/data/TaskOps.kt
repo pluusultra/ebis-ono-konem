@@ -1,5 +1,6 @@
 package ru.konem.ebis.data
 
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -17,14 +18,28 @@ object TaskOps {
     fun add(
         tasks: List<Task>, title: String, desc: String, due: LocalDate,
         time: Int? = null, repeat: Repeat = Repeat.None, hot: Boolean = false,
+        repeatDays: Set<DayOfWeek> = emptySet(),
     ): Pair<List<Task>, Long> {
         val id = nextId(tasks)
-        return tasks + Task(id = id, title = title, desc = desc, due = due, time = time, repeat = repeat, hot = hot, order = nextOrder(tasks)) to id
+        val task = Task(
+            id = id, title = title, desc = desc, due = repeat.firstDue(due, repeatDays), time = time,
+            repeat = repeat, hot = hot, order = nextOrder(tasks), repeatDays = repeatDays,
+        )
+        return tasks + task to id
     }
 
     /** Правка: меняются только поля, которые есть в форме. */
-    fun edit(tasks: List<Task>, id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean) =
-        tasks.map { if (it.id == id) it.copy(title = title, desc = desc, due = due, time = time, repeat = repeat, hot = hot) else it }
+    fun edit(
+        tasks: List<Task>, id: Long, title: String, desc: String, due: LocalDate,
+        time: Int?, repeat: Repeat, hot: Boolean, repeatDays: Set<DayOfWeek> = emptySet(),
+    ) = tasks.map {
+        if (it.id != id) return@map it
+        val scheduleChanged = due != it.due || repeat != it.repeat || repeatDays != it.repeatDays
+        it.copy(
+            title = title, desc = desc, due = if (scheduleChanged) repeat.firstDue(due, repeatDays) else due,
+            time = time, repeat = repeat, hot = hot, repeatDays = repeatDays,
+        )
+    }
 
     /** Второй элемент — новое состояние: true, если задача теперь сделана. */
     fun toggle(tasks: List<Task>, id: Long, today: LocalDate = LocalDate.now()): Pair<List<Task>, Boolean> {
@@ -45,7 +60,7 @@ object TaskOps {
         val now = System.currentTimeMillis()
         if (t.repeat == Repeat.None) return tasks.map { if (it.id == t.id) it.copy(done = true, doneAt = now) else it }
         val newId = nextId(tasks)
-        val next = t.copy(id = newId, due = t.repeat.next(t.due, today), done = false, doneAt = 0L, nextId = 0L)
+        val next = t.copy(id = newId, due = t.repeat.next(t.due, today, t.repeatDays), done = false, doneAt = 0L, nextId = 0L)
         return tasks.map { if (it.id == t.id) it.copy(done = true, doneAt = now, nextId = newId) else it } + next
     }
 

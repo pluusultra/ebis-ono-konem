@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import ru.konem.ebis.data.Repeat
 import ru.konem.ebis.data.Task
 import ru.konem.ebis.data.TaskRepo
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 class TasksViewModel(app: Application) : AndroidViewModel(app) {
@@ -14,11 +15,11 @@ class TasksViewModel(app: Application) : AndroidViewModel(app) {
 
     val tasks: List<Task> get() = TaskRepo.tasks
 
-    fun add(title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean) =
-        TaskRepo.add(title, desc, due, time, repeat, hot)
+    fun add(title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean, repeatDays: Set<DayOfWeek>) =
+        TaskRepo.add(title, desc, due, time, repeat, hot, repeatDays)
 
-    fun edit(id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean) =
-        TaskRepo.edit(id, title, desc, due, time, repeat, hot)
+    fun edit(id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean, repeatDays: Set<DayOfWeek>) =
+        TaskRepo.edit(id, title, desc, due, time, repeat, hot, repeatDays)
 
     fun toggle(id: Long): Boolean = TaskRepo.toggle(id)
     fun postpone(id: Long) = TaskRepo.postpone(id)

@@ -1,5 +1,8 @@
 package ru.konem.ebis.ui
 
+import ru.konem.ebis.data.Repeat
+import ru.konem.ebis.data.Task
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -49,13 +52,19 @@ object Copy {
     fun fmtTime(min: Int) = "%d:%02d".format(min / 60, min % 60)
 
     private val weekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+    fun shortWeekday(day: DayOfWeek) = weekdays[day.value - 1]
+
+    fun repeatLabel(task: Task): String = when (task.repeat) {
+        Repeat.SelectedDays -> task.repeatDays.sorted().joinToString(", ", transform = ::shortWeekday)
+        else -> task.repeat.short
+    }
 
     /** «сегодня», «завтра», «пт, 24 окт». */
     fun dayLabel(d: LocalDate, today: LocalDate): String = when (ChronoUnit.DAYS.between(today, d).toInt()) {
         0 -> "сегодня"
         1 -> "завтра"
         2 -> "послезавтра"
-        else -> "${weekdays[d.dayOfWeek.value - 1]}, ${shortDate(d)}"
+        else -> "${shortWeekday(d.dayOfWeek)}, ${shortDate(d)}"
     }
 
     private val months = listOf("янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек")

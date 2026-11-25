@@ -810,7 +810,7 @@ private fun TaskCard(
                     Badge(label, kind)
                     if (task.hot && !task.done) Badge("🔥 горит", Copy.BadgeKind.Late)
                     task.time?.let { Badge("⏰ " + Copy.fmtTime(it), Copy.BadgeKind.Normal) }
-                    if (task.repeat != Repeat.None) Badge("🔁 " + task.repeat.short, Copy.BadgeKind.Normal)
+                    if (task.repeat != Repeat.None) Badge("🔁 " + Copy.repeatLabel(task), Copy.BadgeKind.Normal)
                 }
             }
 

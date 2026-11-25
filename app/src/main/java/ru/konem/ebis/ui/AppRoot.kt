@@ -249,9 +249,9 @@ fun AppRoot(vm: TasksViewModel = viewModel()) {
             onSave = { d ->
                 sheetOpen = false
                 if (d.id != null) {
-                    withUndo(Copy.edited) { vm.edit(d.id, d.title, d.desc, d.due, d.time, d.repeat, d.hot) }
+                    withUndo(Copy.edited) { vm.edit(d.id, d.title, d.desc, d.due, d.time, d.repeat, d.hot, d.repeatDays) }
                 } else {
-                    vm.add(d.title, d.desc, d.due, d.time, d.repeat, d.hot)
+                    vm.add(d.title, d.desc, d.due, d.time, d.repeat, d.hot, d.repeatDays)
                     tab = if (!d.due.isAfter(LocalDate.now())) Tab.Today else Tab.All
                     toast.show(Copy.saved)
                 }

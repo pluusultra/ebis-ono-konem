@@ -10,6 +10,7 @@ import ru.konem.ebis.data.TaskOps
 import ru.konem.ebis.data.mergeTasks
 import ru.konem.ebis.ui.Copy
 import java.io.File
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 enum class Tab(val icon: String, val title: String) { Today("🔥", "Сегодня"), All("📦", "Вся херня"), Done("✅", "Сделано") }
@@ -119,21 +120,24 @@ class AppState(val store: DesktopStore) {
         toast = Toast(text, undo)
     }
 
-    fun add(title: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean, desc: String = "") {
+    fun add(
+        title: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean,
+        desc: String = "", repeatDays: Set<DayOfWeek> = emptySet(),
+    ) {
         if (title.isBlank()) {
             show(Copy.emptyTitle)
             return
         }
-        update(TaskOps.add(data.tasks, title.trim(), desc.trim(), due, time, repeat, hot).first)
+        update(TaskOps.add(data.tasks, title.trim(), desc.trim(), due, time, repeat, hot, repeatDays).first)
         show(Copy.saved)
     }
 
-    fun edit(id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean) {
+    fun edit(id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean, repeatDays: Set<DayOfWeek>) {
         if (title.isBlank()) {
             show(Copy.emptyTitle)
             return
         }
-        withUndo(Copy.edited) { update(TaskOps.edit(data.tasks, id, title.trim(), desc.trim(), due, time, repeat, hot)) }
+        withUndo(Copy.edited) { update(TaskOps.edit(data.tasks, id, title.trim(), desc.trim(), due, time, repeat, hot, repeatDays)) }
     }
 
     fun toggle(id: Long) {

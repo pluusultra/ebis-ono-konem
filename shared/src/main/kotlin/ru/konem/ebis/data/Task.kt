@@ -21,6 +21,7 @@ data class Task(
     val nextId: Long = 0L,
     /** Когда задачу последний раз меняли (мс). По нему слияние с ПК решает, чья версия новее. */
     val updatedAt: Long = 0L,
+    val repeatDays: Set<DayOfWeek> = emptySet(),
 )
 
 /**
@@ -34,7 +35,8 @@ enum class Repeat(val label: String, val short: String) {
     Daily("Каждый день", "каждый день"),
     Weekdays("По будням", "по будням"),
     Weekly("Каждую неделю", "каждую неделю"),
-    Monthly("Каждый месяц", "каждый месяц");
+    Monthly("Каждый месяц", "каждый месяц"),
+    SelectedDays("По дням недели", "по дням недели");
 
     private fun step(d: LocalDate): LocalDate = when (this) {
         None -> d
@@ -44,12 +46,21 @@ enum class Repeat(val label: String, val short: String) {
             while (n.dayOfWeek == DayOfWeek.SATURDAY || n.dayOfWeek == DayOfWeek.SUNDAY) n = n.plusDays(1)
             n
         }
-        Weekly -> d.plusWeeks(1)
+        Weekly, SelectedDays -> d.plusWeeks(1)
         Monthly -> d.plusMonths(1)
     }
 
+    fun firstDue(date: LocalDate, days: Set<DayOfWeek>): LocalDate {
+        if (this != SelectedDays) return date
+        val offset = days.minOfOrNull { (it.value - date.dayOfWeek.value + 7) % 7 } ?: 0
+        return date.plusDays(offset.toLong())
+    }
+
     /** Следующая дата строго после сегодняшнего дня. */
-    fun next(due: LocalDate, today: LocalDate): LocalDate {
+    fun next(due: LocalDate, today: LocalDate, days: Set<DayOfWeek> = emptySet()): LocalDate {
+        if (this == SelectedDays && days.isNotEmpty()) {
+            return firstDue(maxOf(due, today).plusDays(1), days)
+        }
         var d = step(due)
         while (!d.isAfter(today)) d = step(d)
         return d

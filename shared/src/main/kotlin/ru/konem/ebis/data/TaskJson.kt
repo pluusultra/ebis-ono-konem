@@ -2,6 +2,7 @@ package ru.konem.ebis.data
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 /**
@@ -37,6 +38,11 @@ object TaskJson {
                     .put("order", t.order)
                     .put("nextId", t.nextId)
                     .put("updatedAt", t.updatedAt)
+                    .apply {
+                        if (t.repeat == Repeat.SelectedDays) {
+                            put("repeatDays", JSONArray(t.repeatDays.sorted().map { it.value }))
+                        }
+                    }
             )
         }
         return arr
@@ -64,6 +70,16 @@ object TaskJson {
         val tasks = List(arr.length()) { i ->
             val o = arr.getJSONObject(i)
             val id = o.getLong("id")
+            val repeat = runCatching { Repeat.valueOf(o.optString("repeat", "None")) }.getOrDefault(Repeat.None)
+            val repeatDays = buildSet {
+                if (repeat == Repeat.SelectedDays) {
+                    val days = o.optJSONArray("repeatDays") ?: return@buildSet
+                    for (index in 0 until days.length()) {
+                        val day = days.optInt(index)
+                        if (day in 1..7) add(DayOfWeek.of(day))
+                    }
+                }
+            }
             Task(
                 id = id,
                 title = o.getString("title"),
@@ -72,11 +88,12 @@ object TaskJson {
                 done = o.optBoolean("done", false),
                 doneAt = o.optLong("doneAt", 0L),
                 time = o.optInt("time", -1).takeIf { it >= 0 },
-                repeat = runCatching { Repeat.valueOf(o.optString("repeat", "None")) }.getOrDefault(Repeat.None),
+                repeat = if (repeat == Repeat.SelectedDays && repeatDays.isEmpty()) Repeat.None else repeat,
                 hot = o.optBoolean("hot", false),
                 order = o.optLong("order", id),
                 nextId = o.optLong("nextId", 0L),
                 updatedAt = o.optLong("updatedAt", 0L),
+                repeatDays = repeatDays,
             )
         }
         val deleted = buildMap {

@@ -57,6 +57,7 @@ import ru.konem.ebis.data.Repeat
 import ru.konem.ebis.data.Task
 import ru.konem.ebis.ui.Copy
 import java.io.File
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -148,6 +149,7 @@ private fun EditDialog(state: AppState, task: Task, today: LocalDate) {
     var dateText by remember(task.id) { mutableStateOf(task.due.format(dateFmt)) }
     var timeText by remember(task.id) { mutableStateOf(task.time?.let { Copy.fmtTime(it) } ?: "") }
     var repeat by remember(task.id) { mutableStateOf(task.repeat) }
+    var repeatDays by remember(task.id) { mutableStateOf(task.repeatDays) }
     var hot by remember(task.id) { mutableStateOf(task.hot) }
     var problem by remember(task.id) { mutableStateOf<String?>(null) }
     val isNew = task.id == DRAFT_ID
@@ -159,11 +161,13 @@ private fun EditDialog(state: AppState, task: Task, today: LocalDate) {
         if (state.editing == null) return
         val time = parseTime(timeText).getOrElse { problem = "Время не понял. Пиши как 15:00"; return }
         val d = parseDate(dateText, today) ?: run { problem = "Дату не понял. Пиши как 17.10.2026"; return }
+        val days = if (repeat == Repeat.SelectedDays) repeatDays else emptySet()
+        if (repeat == Repeat.SelectedDays && days.isEmpty()) return
         if (isNew) {
             if (title.isBlank()) { problem = "Без названия не накину"; return }
-            state.add(title, d, time, repeat, hot, desc)
+            state.add(title, d, time, repeat, hot, desc, days)
         } else {
-            state.edit(task.id, title, desc, d, time, repeat, hot)
+            state.edit(task.id, title, desc, d, time, repeat, hot, days)
         }
         close()
     }
@@ -216,6 +220,16 @@ private fun EditDialog(state: AppState, task: Task, today: LocalDate) {
         Label("Повтор")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Repeat.entries.forEach { r -> SelectChip(r.label, repeat == r) { repeat = r } }
+        }
+        if (repeat == Repeat.SelectedDays) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DayOfWeek.values().forEach { day ->
+                    SelectChip(Copy.shortWeekday(day), day in repeatDays) {
+                        repeatDays = if (day in repeatDays) repeatDays - day else repeatDays + day
+                    }
+                }
+            }
+            if (repeatDays.isEmpty()) Label("Выбери хотя бы один день")
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {

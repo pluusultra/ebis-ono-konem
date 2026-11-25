@@ -84,6 +84,7 @@ import ru.konem.ebis.ui.theme.Body
 import ru.konem.ebis.ui.theme.Display
 import ru.konem.ebis.ui.theme.Mono
 import ru.konem.ebis.ui.theme.Palette
+import java.time.DayOfWeek
 import java.time.LocalDate
 import kotlin.math.roundToInt
 
@@ -100,6 +101,7 @@ data class Draft(
     val time: Int?,
     val repeat: Repeat,
     val hot: Boolean,
+    val repeatDays: Set<DayOfWeek>,
 )
 
 /**
@@ -158,6 +160,7 @@ private fun SheetContent(
     var picked by rememberSaveable { mutableStateOf(editing?.due?.takeIf { initialWhen == When.Pick }?.toEpochDay()) }
     var time by rememberSaveable { mutableStateOf(editing?.time) }
     var repeat by rememberSaveable { mutableStateOf(editing?.repeat ?: Repeat.None) }
+    var repeatDays by rememberSaveable { mutableStateOf(ArrayList(editing?.repeatDays.orEmpty())) }
     var hot by rememberSaveable { mutableStateOf(editing?.hot ?: false) }
     var error by rememberSaveable { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
@@ -193,7 +196,9 @@ private fun SheetContent(
         }
     }
     LaunchedEffect(parsed.time) { parsed.time?.let { time = it } }
-    LaunchedEffect(parsed.repeat) { parsed.repeat?.let { repeat = it } }
+    LaunchedEffect(parsed.repeat) {
+        if (repeat != Repeat.SelectedDays) parsed.repeat?.let { repeat = it }
+    }
     LaunchedEffect(parsed.hot) { if (parsed.hot) hot = true }
 
     LaunchedEffect(Unit) {
@@ -328,6 +333,16 @@ private fun SheetContent(
                             SelectChip(if (r == Repeat.None) "Разово" else r.label, repeat == r) { repeat = r }
                         }
                     }
+                    if (repeat == Repeat.SelectedDays) {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            DayOfWeek.values().forEach { day ->
+                                SelectChip(Copy.shortWeekday(day), day in repeatDays) {
+                                    repeatDays = ArrayList(if (day in repeatDays) repeatDays - day else repeatDays + day)
+                                }
+                            }
+                        }
+                        if (repeatDays.isEmpty()) Label("Выбери хотя бы один день")
+                    }
                 }
 
                 Row(
@@ -368,6 +383,7 @@ private fun SheetContent(
 
                 BrutalButton(
                     onClick = {
+                        if (repeat == Repeat.SelectedDays && repeatDays.isEmpty()) return@BrutalButton
                         val t = (if (parsed.found) parsed.title else title).trim()
                         if (t.isEmpty()) {
                             error = true
@@ -381,7 +397,8 @@ private fun SheetContent(
                                 When.Tomorrow -> today.plusDays(1)
                                 When.Pick -> picked?.let { LocalDate.ofEpochDay(it) } ?: today
                             }
-                            onSave(Draft(editing?.id, t, desc.trim(), due, time, repeat, hot))
+                            val days = if (repeat == Repeat.SelectedDays) repeatDays.toSet() else emptySet()
+                            onSave(Draft(editing?.id, t, desc.trim(), due, time, repeat, hot, days))
                         }
                     },
                     bg = Palette.AccentBg,

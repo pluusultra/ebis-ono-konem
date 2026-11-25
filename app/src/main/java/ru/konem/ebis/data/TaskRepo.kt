@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.util.concurrent.Executors
 
@@ -42,15 +43,18 @@ object TaskRepo {
         seeded = data.seeded
     }
 
-    fun add(title: String, desc: String, due: LocalDate, time: Int? = null, repeat: Repeat = Repeat.None, hot: Boolean = false): Long {
-        val (next, id) = TaskOps.add(tasks, title, desc, due, time, repeat, hot)
+    fun add(
+        title: String, desc: String, due: LocalDate, time: Int? = null,
+        repeat: Repeat = Repeat.None, hot: Boolean = false, repeatDays: Set<DayOfWeek> = emptySet(),
+    ): Long {
+        val (next, id) = TaskOps.add(tasks, title, desc, due, time, repeat, hot, repeatDays)
         update(next)
         return id
     }
 
     /** Правка: меняются только поля, которые есть в форме. */
-    fun edit(id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean) =
-        update(TaskOps.edit(tasks, id, title, desc, due, time, repeat, hot))
+    fun edit(id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean, repeatDays: Set<DayOfWeek>) =
+        update(TaskOps.edit(tasks, id, title, desc, due, time, repeat, hot, repeatDays))
 
     /** Возвращает новое состояние: true — задача теперь сделана. */
     fun toggle(id: Long, sync: Boolean = false): Boolean {

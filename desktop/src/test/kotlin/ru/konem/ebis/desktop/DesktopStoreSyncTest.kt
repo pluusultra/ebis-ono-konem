@@ -4,6 +4,8 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Test
+import ru.konem.ebis.data.Tag
+import ru.konem.ebis.data.TagOps
 import ru.konem.ebis.data.Task
 import ru.konem.ebis.data.TaskData
 import ru.konem.ebis.data.TaskJson
@@ -54,5 +56,23 @@ class DesktopStoreSyncTest {
         assertFalse(copy.exists())
         assertEquals(listOf("Основной", "Только в копии"), state.tasks.map { it.title })
         assertEquals(state.tasks, TaskJson.parseData(file.readText()).tasks)
+    }
+
+    @Test
+    fun syncingTagDeletionRemovesItFromTheActiveFilter() {
+        val first = Tag(10, "Работа", 0, 100)
+        val second = Tag(11, "Дом", 0, 100)
+        val local = TaskData(listOf(t(1, "Задача", 10)), tags = listOf(first, second))
+        store.save(local)
+        val state = AppState(store)
+        state.toggleTagFilter(first.id)
+        state.toggleTagFilter(second.id)
+
+        val afterFirstDeletion = TagOps.delete(local, first.id)
+        state.pull(afterFirstDeletion)
+        assertEquals(setOf(second.id), state.tagFilter)
+
+        state.pull(TagOps.delete(afterFirstDeletion, second.id))
+        assertEquals(emptySet<Long>(), state.tagFilter)
     }
 }

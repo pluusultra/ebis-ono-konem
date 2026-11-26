@@ -72,8 +72,7 @@ class AppState(val store: DesktopStore) {
         folder = dir
         val there = store.load()
         val merged = if (there == null) before else mergeTasks(before, there)
-        data = store.save(merged)
-        refreshStatus()
+        save(merged)
         val n = data.tasks.count { !it.done }
         show("Папка подключена. ${Copy.left(n)}")
     }
@@ -88,8 +87,7 @@ class AppState(val store: DesktopStore) {
         val merged = mergeTasks(data, external)
         val changed = merged.tasks != data.tasks
         // Записываем всегда: если наша версия что-то добавила (или пришла конфликтная копия) — телефон это получит.
-        data = store.save(merged)
-        refreshStatus()
+        save(merged)
         return changed
     }
 
@@ -101,10 +99,8 @@ class AppState(val store: DesktopStore) {
 
     private fun update(newTasks: List<Task>) {
         if (newTasks == data.tasks) return
-        val next = TaskOps.stamp(data, newTasks)
         // save вливает то, что успело прийти с телефона, и возвращает итог.
-        data = store.save(next)
-        refreshStatus()
+        save(TaskOps.stamp(data, newTasks))
     }
 
     /** Действие с «Верни» в тосте. */
@@ -160,8 +156,9 @@ class AppState(val store: DesktopStore) {
         tagFilter = emptySet()
     }
 
-    private fun saveTags(next: TaskData) {
+    private fun save(next: TaskData) {
         data = store.save(next)
+        tagFilter = tagFilter.intersect(data.tags.map { it.id }.toSet())
         refreshStatus()
     }
 
@@ -169,20 +166,19 @@ class AppState(val store: DesktopStore) {
     fun addTag(name: String, color: Int): Long? {
         TagOps.problem(data.tags, name)?.let { show(it); return null }
         val (next, id) = TagOps.add(data, name, color)
-        saveTags(next)
+        save(next)
         return id
     }
 
     fun editTag(id: Long, name: String, color: Int): Boolean {
         TagOps.problem(data.tags, name, exceptId = id)?.let { show(it); return false }
-        saveTags(TagOps.edit(data, id, name, color))
+        save(TagOps.edit(data, id, name, color))
         return true
     }
 
     fun deleteTag(id: Long) {
         val tag = data.tags.firstOrNull { it.id == id } ?: return
-        saveTags(TagOps.delete(data, id))
-        tagFilter = tagFilter - id
+        save(TagOps.delete(data, id))
         show("Тег «${tag.name}» — нахер")
     }
 

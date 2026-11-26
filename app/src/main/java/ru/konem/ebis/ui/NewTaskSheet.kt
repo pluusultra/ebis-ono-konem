@@ -55,6 +55,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +68,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -79,6 +82,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ru.konem.ebis.data.Repeat
+import ru.konem.ebis.data.ChecklistItem
+import ru.konem.ebis.data.TaskRepo
 import ru.konem.ebis.data.Task
 import ru.konem.ebis.ui.theme.Body
 import ru.konem.ebis.ui.theme.Display
@@ -103,6 +108,13 @@ data class Draft(
     val hot: Boolean,
     val repeatDays: Set<DayOfWeek>,
     val tagIds: Set<Long>,
+    val checklist: List<ChecklistItem>,
+    val original: Task?,
+)
+
+private val checklistSaver = listSaver<List<ChecklistItem>, Any>(
+    save = { items -> items.flatMap { listOf(it.text, it.done) } },
+    restore = { values -> values.chunked(2).map { ChecklistItem(it[0] as String, it[1] as Boolean) } },
 )
 
 /**
@@ -158,7 +170,11 @@ private fun SheetContent(
         editing.due == today.plusDays(1) -> When.Tomorrow
         else -> When.Pick
     }
-    var title by rememberSaveable { mutableStateOf(editing?.title ?: prefillTitle) }
+    var titleInput by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        val initial = editing?.title ?: prefillTitle
+        mutableStateOf(TextFieldValue(initial, TextRange(initial.length)))
+    }
+    val title = titleInput.text
     var desc by rememberSaveable { mutableStateOf(editing?.desc ?: prefillDesc) }
     var whenSel by rememberSaveable { mutableStateOf(initialWhen) }
     var picked by rememberSaveable { mutableStateOf(editing?.due?.takeIf { initialWhen == When.Pick }?.toEpochDay()) }
@@ -167,6 +183,8 @@ private fun SheetContent(
     var repeatDays by rememberSaveable { mutableStateOf(ArrayList(editing?.repeatDays.orEmpty())) }
     var hot by rememberSaveable { mutableStateOf(editing?.hot ?: false) }
     var tagIds by rememberSaveable { mutableStateOf(ArrayList(editing?.tagIds ?: prefillTags)) }
+    val original = remember(editing?.id) { editing }
+    var checklist by rememberSaveable(stateSaver = checklistSaver) { mutableStateOf(editing?.checklist.orEmpty()) }
     var error by rememberSaveable { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
@@ -190,7 +208,10 @@ private fun SheetContent(
     }
 
     // Разбор «завтра в 15:00 каждый день» из названия. Подставляем, как только нашли.
-    val parsed = remember(title) { QuickParse.parse(title, today) }
+    val tags = TaskRepo.tags
+    val parsed = remember(title, tags, original) {
+        if (title == original?.title) QuickParse.Result(title) else QuickParse.parse(title, today, tags)
+    }
     LaunchedEffect(parsed.date) {
         parsed.date?.let { d ->
             when (d) {
@@ -270,8 +291,8 @@ private fun SheetContent(
                 ) {
                     Label("Чё надо сделать")
                     Field(
-                        value = title,
-                        onChange = { title = it; error = false },
+                        value = titleInput,
+                        onChange = { titleInput = it; error = false },
                         placeholder = "Позвонить маме завтра в 19:00",
                         error = error,
                         singleLine = true,
@@ -291,6 +312,7 @@ private fun SheetContent(
                             modifier = Modifier.animateContentSize(Motion.smooth()),
                         )
                     }
+                    QuickTagSuggestions(title, tags) { titleInput = TextFieldValue(it, TextRange(it.length)) }
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -308,6 +330,8 @@ private fun SheetContent(
                         minHeight = 80.dp,
                     )
                 }
+
+                ChecklistEditor(checklist) { checklist = it }
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Label("Когда")
@@ -408,7 +432,7 @@ private fun SheetContent(
                                 When.Pick -> picked?.let { LocalDate.ofEpochDay(it) } ?: today
                             }
                             val days = if (repeat == Repeat.SelectedDays) repeatDays.toSet() else emptySet()
-                            onSave(Draft(editing?.id, t, desc.trim(), due, time, repeat, hot, days, tagIds.toSet()))
+                            onSave(Draft(editing?.id, t, desc.trim(), due, time, repeat, hot, days, tagIds.toSet() + parsed.tagIds, checklist, original))
                         }
                     },
                     bg = Palette.AccentBg,
@@ -472,7 +496,7 @@ private fun Label(text: String) {
 }
 
 @Composable
-private fun Field(
+internal fun Field(
     value: String,
     onChange: (String) -> Unit,
     placeholder: String,
@@ -489,21 +513,43 @@ private fun Field(
         cursorBrush = SolidColor(Palette.Ink),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         modifier = modifier.fillMaxWidth(),
-        decorationBox = { inner ->
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = minHeight)
-                    .brutal(
-                        if (error) Palette.ErrorBg else Palette.Card,
-                        radius = 12.dp, shadow = 0.dp,
-                        borderColor = if (error) Palette.Red else Palette.Ink,
-                    )
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-            ) {
-                if (value.isEmpty()) Text(placeholder, fontSize = 15.sp, color = Palette.Faint)
-                inner()
-            }
-        },
+        decorationBox = { inner -> FieldDecoration(value, placeholder, error, minHeight, inner) },
     )
+}
+
+@Composable
+private fun Field(
+    value: TextFieldValue,
+    onChange: (TextFieldValue) -> Unit,
+    placeholder: String,
+    singleLine: Boolean,
+    modifier: Modifier = Modifier,
+    error: Boolean = false,
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = singleLine,
+        textStyle = TextStyle(fontFamily = Body, fontSize = 15.sp, color = Palette.Ink),
+        cursorBrush = SolidColor(Palette.Ink),
+        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+        modifier = modifier.fillMaxWidth(),
+        decorationBox = { inner -> FieldDecoration(value.text, placeholder, error, 0.dp, inner) },
+    )
+}
+
+@Composable
+private fun FieldDecoration(value: String, placeholder: String, error: Boolean, minHeight: Dp, inner: @Composable () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().heightIn(min = minHeight)
+            .brutal(
+                if (error) Palette.ErrorBg else Palette.Card,
+                radius = 12.dp, shadow = 0.dp,
+                borderColor = if (error) Palette.Red else Palette.Ink,
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        if (value.isEmpty()) Text(placeholder, fontSize = 15.sp, color = Palette.Faint)
+        inner()
+    }
 }

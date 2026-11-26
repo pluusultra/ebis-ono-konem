@@ -1,6 +1,7 @@
 package ru.konem.ebis.ui
 
 import ru.konem.ebis.data.Repeat
+import ru.konem.ebis.data.Tag
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
@@ -18,6 +19,7 @@ object QuickParse {
         val repeat: Repeat? = null,
         val hot: Boolean = false,
         val labels: List<String> = emptyList(),
+        val tagIds: Set<Long> = emptySet(),
     ) {
         val found get() = labels.isNotEmpty()
     }
@@ -26,6 +28,30 @@ object QuickParse {
     private const val L = "(?<![\\p{L}\\d])"
     private const val R = "(?![\\p{L}\\d])"
     private val OPTS = setOf(RegexOption.IGNORE_CASE)
+    private val tagToken = Regex("""(?<!\S)#(?:"((?:\\["\\]|[^"\\\r\n])*)"|([\p{L}\p{N}_-]+))""")
+    private val unfinishedTag = Regex("""(?<!\S)#(?:"((?:\\["\\]|[^"\\\r\n])*)|([\p{L}\p{N}_-]*))$""")
+    private val simpleTag = Regex("""[\p{L}\p{N}_-]+""")
+    private val escapedTagCharacter = Regex("""\\(["\\])""")
+
+    fun tagSuggestions(input: String, tags: List<Tag>): List<Tag> {
+        val match = unfinishedTag.find(input) ?: return emptyList()
+        val quoted = match.groups[1] != null
+        val prefix = tagName(match)
+        return tags.filter {
+            '\n' !in it.name && '\r' !in it.name && it.name.startsWith(prefix, ignoreCase = true) &&
+                (quoted || !it.name.equals(prefix, ignoreCase = true))
+        }.take(5)
+    }
+
+    fun completeTag(input: String, tag: Tag): String {
+        val match = unfinishedTag.find(input) ?: return input
+        val name = if (simpleTag.matches(tag.name)) tag.name else "\"" + tag.name.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+        return input.replaceRange(match.range, "#$name ")
+    }
+
+    private fun tagName(token: MatchResult): String =
+        token.groups[1]?.value?.let { name -> escapedTagCharacter.replace(name) { it.groupValues[1] } }
+            ?: token.groupValues[2]
 
     private val weekdays = listOf(
         DayOfWeek.MONDAY to "понедельник|понедельника|понедельникам|пн",
@@ -44,8 +70,21 @@ object QuickParse {
         "шесть" to 6, "семь" to 7, "десять" to 10, "пару" to 2,
     )
 
-    fun parse(input: String, today: LocalDate = LocalDate.now()): Result {
-        var text = input
+    fun parse(input: String, today: LocalDate = LocalDate.now(), tags: List<Tag> = emptyList()): Result {
+        val selectedTags = linkedSetOf<Tag>()
+        val literals = mutableMapOf<String, String>()
+        var text = tagToken.replace(input) { token ->
+            val name = tagName(token)
+            val tag = tags.firstOrNull { it.name.equals(name, ignoreCase = true) }
+            if (tag == null) {
+                val marker = "\uE000" + literals.size + "\uE001"
+                literals[marker] = token.value
+                marker
+            } else {
+                selectedTags += tag
+                " "
+            }
+        }
         var date: LocalDate? = null
         var time: Int? = null
         var repeat: Repeat? = null
@@ -158,13 +197,19 @@ object QuickParse {
         time?.let { labels += "⏰ " + Copy.fmtTime(it) }
         repeat?.let { labels += "🔁 " + it.short }
         if (hot) labels += "🔥 горит"
+        labels += selectedTags.map { "#" + it.name }
 
-        val clean = text
+        var clean = text
             .replace(Regex("\\s+"), " ")
             .replace(Regex("\\s+([,.!?])"), "$1")
             .replace(Regex("(?:\\s+(?:в|во|к|на))+\\s*$", OPTS), "")
             .trim()
             .trim(',', ' ')
-        return Result(title = if (labels.isEmpty()) input.trim() else clean, date = date, time = time, repeat = repeat, hot = hot, labels = labels)
+        literals.forEach { (marker, original) -> clean = clean.replace(marker, original) }
+        return Result(
+            title = if (labels.isEmpty()) input.trim() else clean,
+            date = date, time = time, repeat = repeat, hot = hot, labels = labels,
+            tagIds = selectedTags.mapTo(linkedSetOf()) { it.id },
+        )
     }
 }

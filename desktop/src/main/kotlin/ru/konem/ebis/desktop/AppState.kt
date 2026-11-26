@@ -3,11 +3,14 @@ package ru.konem.ebis.desktop
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import ru.konem.ebis.data.ChecklistItem
+import ru.konem.ebis.data.OverdueAction
 import ru.konem.ebis.data.Repeat
 import ru.konem.ebis.data.TagOps
 import ru.konem.ebis.data.Task
 import ru.konem.ebis.data.TaskData
 import ru.konem.ebis.data.TaskOps
+import ru.konem.ebis.data.importTasks
 import ru.konem.ebis.data.mergeTasks
 import ru.konem.ebis.ui.Copy
 import java.io.File
@@ -32,6 +35,7 @@ class AppState(val store: DesktopStore) {
         private set
     var toast by mutableStateOf<Toast?>(null)
     var editing by mutableStateOf<Task?>(null)
+    var tools by mutableStateOf<TaskTool?>(null)
 
     /** Будильник «Горит», который сейчас орёт (своё окно поверх всех). */
     var alarm by mutableStateOf<AlarmRing?>(null)
@@ -97,18 +101,20 @@ class AppState(val store: DesktopStore) {
         lastSync = store.lastSync
     }
 
-    private fun update(newTasks: List<Task>) {
-        if (newTasks == data.tasks) return
+    private fun update(newTasks: List<Task>): List<Task> {
+        if (newTasks == data.tasks) return data.tasks
+        val next = TaskOps.stamp(data, newTasks)
         // save вливает то, что успело прийти с телефона, и возвращает итог.
-        save(TaskOps.stamp(data, newTasks))
+        save(next)
+        return next.tasks
     }
 
     /** Действие с «Верни» в тосте. */
-    private fun withUndo(message: String, block: () -> Unit) {
+    private fun withUndo(message: String, next: List<Task>) {
         val before = data.tasks
-        block()
+        val after = update(next)
         show(message) {
-            update(before)
+            update(TaskOps.undo(data.tasks, before, after))
             show(Copy.restored)
         }
     }
@@ -120,24 +126,26 @@ class AppState(val store: DesktopStore) {
     fun add(
         title: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean,
         desc: String = "", repeatDays: Set<DayOfWeek> = emptySet(), tagIds: Set<Long> = emptySet(),
+        checklist: List<ChecklistItem> = emptyList(),
     ) {
         if (title.isBlank()) {
             show(Copy.emptyTitle)
             return
         }
-        update(TaskOps.add(data.tasks, title.trim(), desc.trim(), due, time, repeat, hot, repeatDays, tagIds).first)
+        update(TaskOps.add(data.tasks, title.trim(), desc.trim(), due, time, repeat, hot, repeatDays, tagIds, checklist).first)
         show(Copy.saved)
     }
 
     fun edit(
         id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean,
-        repeatDays: Set<DayOfWeek>, tagIds: Set<Long>,
+        repeatDays: Set<DayOfWeek>, tagIds: Set<Long>, checklist: List<ChecklistItem>? = null, original: Task? = null,
     ) {
         if (title.isBlank()) {
             show(Copy.emptyTitle)
             return
         }
-        withUndo(Copy.edited) { update(TaskOps.edit(data.tasks, id, title.trim(), desc.trim(), due, time, repeat, hot, repeatDays, tagIds)) }
+        val next = TaskOps.edit(data.tasks, id, title.trim(), desc.trim(), due, time, repeat, hot, repeatDays, tagIds, checklist, original)
+        withUndo(Copy.edited, next)
     }
 
     // ── Теги ──
@@ -182,24 +190,64 @@ class AppState(val store: DesktopStore) {
         show("Тег «${tag.name}» — нахер")
     }
 
+    fun restoreTask(id: Long) {
+        val next = TaskOps.restoreDeleted(data, id)
+        if (next != data) {
+            save(next)
+            show("Задача восстановлена")
+        }
+    }
+
+    fun restoreTag(id: Long) {
+        val next = TagOps.restoreDeleted(data, id)
+        if (next == data) {
+            show("Не удалось вернуть тег. Проверь, свободно ли его название")
+            return
+        }
+        save(next)
+        show("Тег восстановлен")
+    }
+
+    fun importFrom(incoming: TaskData) {
+        runCatching {
+            val next = importTasks(data, incoming)
+            store.importBackup.save(data)
+            save(next)
+        }.onSuccess { show("Задачи загружены. Копия перед импортом сохранена") }
+            .onFailure { show("Импорт не удался") }
+    }
+
+    fun restoreImportBackup() {
+        runCatching { save(importTasks(data, store.importBackup.load(), restore = true)) }
+            .onSuccess { show("Копия перед импортом восстановлена") }
+            .onFailure { show("Не удалось восстановить копию") }
+    }
+
+    fun batch(ids: Set<Long>, action: OverdueAction, tags: Set<Long> = emptySet()) {
+        val validTags = tags.intersect(this.tags.map { it.id }.toSet())
+        withUndo("Изменения применены", TaskOps.applyToOverdue(tasks, ids, action, validTags))
+    }
+
     fun toggle(id: Long) {
         val before = data.tasks
         val (next, done) = TaskOps.toggle(data.tasks, id)
-        update(next)
+        val after = update(next)
         val allDone = done && next.none { !it.done && !it.due.isAfter(LocalDate.now()) }
         val msg = when {
             allDone -> Copy.allDone(0, false)
             done -> Copy.praise.random()
             else -> Copy.undo.random()
         }
-        show(msg) { update(before) }
+        show(msg) { update(TaskOps.undo(data.tasks, before, after)) }
     }
 
-    fun postpone(id: Long) = withUndo(Copy.postponed.random()) { update(TaskOps.postpone(data.tasks, id)) }
+    fun postpone(id: Long) = withUndo(Copy.postponed.random(), TaskOps.postpone(data.tasks, id))
 
-    fun delete(id: Long) = withUndo(Copy.deleted) { update(TaskOps.delete(data.tasks, id)) }
+    fun delete(id: Long) = withUndo(Copy.deleted, TaskOps.delete(data.tasks, id))
 
-    fun reorder(ids: List<Long>) = update(TaskOps.reorder(data.tasks, if (newFirst) ids.reversed() else ids))
+    fun reorder(ids: List<Long>) {
+        update(TaskOps.reorder(data.tasks, if (newFirst) ids.reversed() else ids))
+    }
 
     fun toggleSort() {
         newFirst = !newFirst
@@ -214,11 +262,13 @@ class AppState(val store: DesktopStore) {
 
     /** Полная форма новой задачи: то же окно правки, но с пустым черновиком. */
     fun newTask() {
+        tools = null
         settingsOpen = false
         if (editing?.id != DRAFT_ID) editing = Task(id = DRAFT_ID, title = "", desc = "", due = LocalDate.now())
     }
 
     fun openSettings(pane: SettingsPane? = null) {
+        tools = null
         pane?.let { settingsPane = it }
         settingsOpen = true
     }
@@ -229,6 +279,8 @@ class AppState(val store: DesktopStore) {
         store.theme = mode
     }
 }
+
+enum class TaskTool { Search, Overdue, Trash }
 
 private fun androidx.compose.ui.graphics.Color.hex() = "#%02X%02X%02X".format((red * 255).toInt(), (green * 255).toInt(), (blue * 255).toInt())
 

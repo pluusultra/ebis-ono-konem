@@ -1,6 +1,7 @@
 package ru.konem.ebis.desktop
 
 import ru.konem.ebis.data.TaskData
+import ru.konem.ebis.data.ImportBackup
 import ru.konem.ebis.data.TaskJson
 import ru.konem.ebis.data.isSyncConflict
 import ru.konem.ebis.data.mergeTasks
@@ -17,6 +18,7 @@ import java.util.prefs.Preferences
 class DesktopStore(prefsNode: String = "ru/konem/ebis-desktop$PROFILE") {
     /** Общий узел настроек: тут же живут уведомления, оформление и клавиши (см. Settings.kt). */
     val prefs: Preferences = Preferences.userRoot().node(prefsNode)
+    val importBackup = ImportBackup(File(defaultFolder(), "before-import.json"))
 
     /** Папка с файлом. null — человек ещё не выбрал (первый запуск). */
     var folder: File?

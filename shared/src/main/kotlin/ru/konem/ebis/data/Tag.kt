@@ -46,7 +46,7 @@ object TagOps {
     const val MAX_NAME = 24
 
     private fun nextId(data: TaskData) =
-        maxOf((data.tags.maxOfOrNull { it.id } ?: 0L) + 1, System.currentTimeMillis())
+        maxOf((data.tags.maxOfOrNull { it.id } ?: 0L) + 1, (data.deletedTags.keys.maxOrNull() ?: 0L) + 1, System.currentTimeMillis())
 
     /** Что не так с названием, или null, если всё хорошо. [exceptId] — тег, который сейчас правим. */
     fun problem(tags: List<Tag>, name: String, exceptId: Long? = null): String? {
@@ -65,17 +65,33 @@ object TagOps {
     }
 
     fun edit(data: TaskData, id: Long, name: String, color: Int, now: Long = System.currentTimeMillis()): TaskData =
-        data.copy(tags = data.tags.map { if (it.id == id) it.copy(name = name.trim(), color = color, updatedAt = now) else it })
+        data.copy(tags = data.tags.map {
+            if (it.id == id) it.copy(name = name.trim(), color = color, updatedAt = maxOf(now, it.updatedAt + 1)) else it
+        })
 
     /**
      * Тег пропадает из списка; надгробие не даёт ему воскреснуть при слиянии. Задачи не трогаем:
      * id тегов не переиспользуются, а незнакомые id нигде не показываются.
      */
-    fun delete(data: TaskData, id: Long, now: Long = System.currentTimeMillis()): TaskData =
-        data.copy(
+    fun delete(data: TaskData, id: Long, now: Long = System.currentTimeMillis()): TaskData {
+        val tag = data.tags.firstOrNull { it.id == id } ?: return data
+        return data.copy(
             tags = data.tags.filterNot { it.id == id },
-            deletedTags = data.deletedTags + (id to now),
+            deletedTags = data.deletedTags + (id to maxOf(now, tag.updatedAt + 1)),
+            trashedTags = data.trashedTags + (id to tag),
         )
+    }
+
+    fun restoreDeleted(data: TaskData, id: Long, now: Long = System.currentTimeMillis()): TaskData {
+        val tag = data.trashedTags[id] ?: return data
+        val deletedAt = data.deletedTags[id] ?: return data
+        if (!TaskJson.canRestore(deletedAt, now) || problem(data.tags, tag.name) != null) return data
+        return data.copy(
+            tags = data.tags + tag.copy(updatedAt = maxOf(now, deletedAt + 1)),
+            deletedTags = data.deletedTags - id,
+            trashedTags = data.trashedTags - id,
+        )
+    }
 
     /** Пустой фильтр — показываем всё; иначе задачи хотя бы с одним из выбранных тегов. */
     fun matches(task: Task, filter: Set<Long>): Boolean = filter.isEmpty() || task.tagIds.any { it in filter }

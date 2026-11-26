@@ -57,6 +57,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -72,6 +74,7 @@ import ru.konem.ebis.ui.BrutalButton
 import ru.konem.ebis.ui.Copy
 import ru.konem.ebis.ui.HeaderButton
 import ru.konem.ebis.ui.QuickParse
+import ru.konem.ebis.ui.QuickTagSuggestions
 import ru.konem.ebis.ui.brutal
 import ru.konem.ebis.ui.theme.Body
 import ru.konem.ebis.ui.theme.Display
@@ -106,9 +109,10 @@ class QuickAddActivity : ComponentActivity() {
 
     private fun save(text: String) {
         val today = LocalDate.now()
-        val p = QuickParse.parse(text, today)
+        val p = QuickParse.parse(text, today, TaskRepo.tags)
         val title = (if (p.found) p.title else text).trim()
-        TaskRepo.add(title, "", p.date ?: today, p.time, p.repeat ?: Repeat.None, p.hot)
+        if (title.isBlank()) return
+        TaskRepo.add(title, "", p.date ?: today, p.time, p.repeat ?: Repeat.None, p.hot, tagIds = p.tagIds)
         // Человек смотрит на виджет — перерисовываем сразу, без обычной паузы.
         Widgets.refresh(this, delayMs = 0)
         Toast.makeText(applicationContext, Copy.saved, Toast.LENGTH_SHORT).show()
@@ -154,7 +158,8 @@ private fun ExpandIcon() {
 
 @Composable
 private fun QuickAdd(onClose: () -> Unit, onSave: (String) -> Unit, onExpand: (String) -> Unit) {
-    var text by rememberSaveable { mutableStateOf("") }
+    var input by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue()) }
+    val text = input.text
     var error by remember { mutableStateOf(false) }
     var shown by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
@@ -163,7 +168,8 @@ private fun QuickAdd(onClose: () -> Unit, onSave: (String) -> Unit, onExpand: (S
     val shake = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val today = remember { LocalDate.now() }
-    val parsed = remember(text) { QuickParse.parse(text, today) }
+    val tags = TaskRepo.tags
+    val parsed = remember(text, tags) { QuickParse.parse(text, today, tags) }
 
     LaunchedEffect(Unit) {
         shown = true
@@ -176,7 +182,7 @@ private fun QuickAdd(onClose: () -> Unit, onSave: (String) -> Unit, onExpand: (S
     }
 
     fun submit() {
-        if (text.isBlank()) {
+        if (parsed.title.isBlank()) {
             error = true
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             scope.launch { for (x in listOf(14f, -12f, 9f, -6f, 3f, 0f)) shake.animateTo(x, tween(55)) }
@@ -225,8 +231,8 @@ private fun QuickAdd(onClose: () -> Unit, onSave: (String) -> Unit, onExpand: (S
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     BasicTextField(
-                        value = text,
-                        onValueChange = { text = it; error = false },
+                        value = input,
+                        onValueChange = { input = it; error = false },
                         singleLine = true,
                         textStyle = TextStyle(fontFamily = Body, fontSize = 16.sp, color = Palette.Ink),
                         cursorBrush = SolidColor(Palette.Ink),
@@ -263,6 +269,7 @@ private fun QuickAdd(onClose: () -> Unit, onSave: (String) -> Unit, onExpand: (S
                         Text("+", color = Palette.AccentFg, fontFamily = Display, fontWeight = FontWeight.Black, fontSize = 18.sp)
                     }
                 }
+                QuickTagSuggestions(text, tags) { input = TextFieldValue(it, TextRange(it.length)); error = false }
                 AnimatedVisibility(
                     error || parsed.found,
                     enter = fadeIn() + expandVertically(),

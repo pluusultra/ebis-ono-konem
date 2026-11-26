@@ -84,6 +84,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -233,11 +235,11 @@ fun App(
             }
         }
 
-        ToastHost(state, Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
-
         EditOverlay(state, today)
         SettingsOverlay(state, pickFolder, pickColor, reminders, compact = w < 760.dp, pickSound = pickSound)
         Onboarding(state, pickFolder)
+        TaskTools(state, today)
+        ToastHost(state, Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
 
         if (cover.value > 0f) Box(Modifier.fillMaxSize().drawBehind { drawRect(Palette.Paper, alpha = cover.value) })
         // Рамки системной нет — тянуть окно за края и углы даём сами, поверх всего.
@@ -382,6 +384,15 @@ private fun Main(state: AppState, today: LocalDate, quickAdd: FocusRequester, co
         Watermark(Modifier.matchParentSize(), compact)
         Column(Modifier.fillMaxSize()) {
             QuickAdd(state, today, quickAdd, compact)
+            Row(
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                GhostChip("Поиск", small = true) { state.tools = TaskTool.Search }
+                if (state.tasks.any { !it.done && it.due.isBefore(today) }) {
+                    GhostChip("Разгрести просроченное", small = true) { state.tools = TaskTool.Overdue }
+                }
+            }
             AnimatedContent(
                 state.tab,
                 transitionSpec = {
@@ -482,18 +493,24 @@ private fun Watermark(modifier: Modifier, compact: Boolean) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun QuickAdd(state: AppState, today: LocalDate, focus: FocusRequester, compact: Boolean) {
-    var text by remember { mutableStateOf("") }
+    var input by remember { mutableStateOf(TextFieldValue()) }
+    val text = input.text
     var focused by remember { mutableStateOf(false) }
-    val parsed = remember(text, today) { QuickParse.parse(text, today) }
+    val tags = state.tags
+    val parsed = remember(text, today, tags) { QuickParse.parse(text, today, tags) }
     val lift by animateFloatAsState(if (focused) 1f else 0f, Motion.snappy(), label = "qaLift")
 
     fun submit() {
         if (text.isBlank()) return
         // При включённом фильтре задача сразу получает его теги — иначе она исчезла бы из ленты.
-        state.add(parsed.title, parsed.date ?: today, parsed.time, parsed.repeat ?: Repeat.None, parsed.hot, tagIds = state.tagFilter)
+        if (parsed.title.isBlank()) {
+            state.show(Copy.emptyTitle)
+            return
+        }
+        state.add(parsed.title, parsed.date ?: today, parsed.time, parsed.repeat ?: Repeat.None, parsed.hot, tagIds = state.tagFilter + parsed.tagIds)
         val d = parsed.date ?: today
         if (state.tab == Tab.Today && d.isAfter(today)) state.show("Накинул на «${Copy.dayLabel(d, today).lowercase()}» — смотри во «Вся херня»")
-        text = ""
+        input = TextFieldValue()
     }
 
     Column(Modifier.fillMaxWidth().entrance(380).padding(start = if (compact) 14.dp else 24.dp, end = if (compact) 14.dp else 28.dp, top = 20.dp, bottom = 8.dp)) {
@@ -521,8 +538,8 @@ private fun QuickAdd(state: AppState, today: LocalDate, focus: FocusRequester, c
                     Text("Накинуть херню… «завтра в 15:00», «в пт», «срочно»", color = Palette.Faint, fontSize = 17.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 BasicTextField(
-                    text,
-                    onValueChange = { text = it },
+                    input,
+                    onValueChange = { input = it },
                     singleLine = true,
                     textStyle = TextStyle(fontFamily = Body, fontSize = 17.sp, color = Palette.Ink),
                     cursorBrush = SolidColor(Palette.Ink),
@@ -534,7 +551,7 @@ private fun QuickAdd(state: AppState, today: LocalDate, focus: FocusRequester, c
                             if (it.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                             when (it.key) {
                                 Key.Enter, Key.NumPadEnter -> { submit(); true }
-                                Key.Escape -> { text = ""; false }
+                                Key.Escape -> { input = TextFieldValue(); false }
                                 else -> false
                             }
                         },
@@ -543,6 +560,10 @@ private fun QuickAdd(state: AppState, today: LocalDate, focus: FocusRequester, c
             AnimatedVisibility(!compact, enter = fadeIn(tween(200)) + expandHorizontally(Motion.smooth()), exit = fadeOut(tween(100)) + shrinkHorizontally(Motion.smooth())) {
                 Keycaps(state.keys[Action.Quick])
             }
+        }
+        QuickTagSuggestions(text, tags) {
+            input = TextFieldValue(it, TextRange(it.length))
+            focus.requestFocus()
         }
         AnimatedVisibility(parsed.found && text.isNotBlank()) {
             FlowRow(
@@ -675,6 +696,7 @@ private fun TaskCard(task: Task, today: LocalDate, tab: Tab, state: AppState, co
                     if (task.hot && !task.done) Badge("🔥 горит", Copy.BadgeKind.Late)
                     task.time?.let { Badge("⏰ " + Copy.fmtTime(it), Copy.BadgeKind.Normal) }
                     if (task.repeat != Repeat.None) Badge("🔁 " + Copy.repeatLabel(task), Copy.BadgeKind.Normal)
+                    if (task.checklist.isNotEmpty()) Badge("✓ " + task.checklist.count { it.done } + "/" + task.checklist.size, Copy.BadgeKind.Normal)
                     TagOps.of(task, state.tags).forEach { TagBadge(it) }
                 }
             }
@@ -806,7 +828,7 @@ private fun ToastHost(state: AppState, modifier: Modifier) {
         delay(if (toast.undo != null) 5000 else 3000)
         if (state.toast?.id == toast.id) state.toast = null
     }
-    AnimatedVisibility(
+        AnimatedVisibility(
         toast != null,
         modifier = modifier,
         enter = fadeIn(tween(150)) + slideInVertically(Motion.bouncy()) { it } + scaleIn(initialScale = 0.9f),

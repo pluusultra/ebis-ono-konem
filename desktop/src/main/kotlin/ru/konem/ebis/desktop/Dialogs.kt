@@ -153,6 +153,7 @@ private fun EditDialog(state: AppState, task: Task, today: LocalDate) {
     var hot by remember(task.id) { mutableStateOf(task.hot) }
     // Новая задача при включённом фильтре сразу получает выбранные теги — иначе она пропала бы из ленты.
     var tagIds by remember(task.id) { mutableStateOf(if (task.id == DRAFT_ID) state.tagFilter else task.tagIds) }
+    var checklist by remember(task.id) { mutableStateOf(task.checklist) }
     var problem by remember(task.id) { mutableStateOf<String?>(null) }
     val isNew = task.id == DRAFT_ID
     val close = { state.editing = null }
@@ -168,10 +169,10 @@ private fun EditDialog(state: AppState, task: Task, today: LocalDate) {
         if (isNew) {
             if (title.isBlank()) { problem = "Без названия не накину"; return }
             val tags = tagIds.filterTo(mutableSetOf()) { id -> state.tags.any { it.id == id } }
-            state.add(title, d, time, repeat, hot, desc, days, tags)
+            state.add(title, d, time, repeat, hot, desc, days, tags, checklist)
         } else {
             // Незнакомые id (тег удалили на другом устройстве) не трогаем — пусть живут, как жили.
-            state.edit(task.id, title, desc, d, time, repeat, hot, days, tagIds)
+            state.edit(task.id, title, desc, d, time, repeat, hot, days, tagIds, checklist, task)
         }
         close()
     }
@@ -193,7 +194,6 @@ private fun EditDialog(state: AppState, task: Task, today: LocalDate) {
             .widthIn(max = 620.dp)
             .fillMaxWidth()
             .brutal(Palette.Paper, radius = 24.dp, shadow = 7.dp, border = 3.dp)
-            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
@@ -201,59 +201,65 @@ private fun EditDialog(state: AppState, task: Task, today: LocalDate) {
             Text(if (isNew) "Накинуть херню" else "Переписать херню", fontFamily = Display, fontWeight = FontWeight.Black, fontSize = 22.sp, modifier = Modifier.weight(1f))
             CloseButton(close)
         }
-        Field(title, { title = it; problem = null }, "Что надо сделать", singleLine = true, big = true, modifier = Modifier.focusRequester(focus))
-        Field(desc, { desc = it }, "Суть, детали, оправдания", singleLine = false)
+        Column(
+            Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Field(title, { title = it; problem = null }, "Что надо сделать", singleLine = true, big = true, modifier = Modifier.focusRequester(focus))
+            Field(desc, { desc = it }, "Суть, детали, оправдания", singleLine = false)
 
-        Label("Когда")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf("Сегодня" to today, "Завтра" to today.plusDays(1), "Послезавтра" to today.plusDays(2), "Через неделю" to today.plusWeeks(1))
-                .forEach { (label, d) -> SelectChip(label, due == d) { setDue(d) } }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(170.dp)) {
-                Field(dateText, {
-                    dateText = it
-                    parseDate(it, today)?.let { d -> due = d }
-                    problem = null
-                }, "дд.мм.гггг", singleLine = true)
-            }
-            Box(Modifier.width(120.dp)) { Field(timeText, { timeText = it; problem = null }, "время", singleLine = true) }
-            Text(Copy.dayLabel(due, today), fontSize = 14.sp, color = Palette.Mute)
-        }
-
-        Label("Повтор")
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Repeat.entries.forEach { r -> SelectChip(r.label, repeat == r) { repeat = r } }
-        }
-        if (repeat == Repeat.SelectedDays) {
+            Label("Когда")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DayOfWeek.values().forEach { day ->
-                    SelectChip(Copy.shortWeekday(day), day in repeatDays) {
-                        repeatDays = if (day in repeatDays) repeatDays - day else repeatDays + day
+                listOf("Сегодня" to today, "Завтра" to today.plusDays(1), "Послезавтра" to today.plusDays(2), "Через неделю" to today.plusWeeks(1))
+                    .forEach { (label, d) -> SelectChip(label, due == d) { setDue(d) } }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(170.dp)) {
+                    Field(dateText, {
+                        dateText = it
+                        parseDate(it, today)?.let { d -> due = d }
+                        problem = null
+                    }, "дд.мм.гггг", singleLine = true)
+                }
+                Box(Modifier.width(120.dp)) { Field(timeText, { timeText = it; problem = null }, "время", singleLine = true) }
+                Text(Copy.dayLabel(due, today), fontSize = 14.sp, color = Palette.Mute)
+            }
+
+            Label("Повтор")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Repeat.entries.forEach { r -> SelectChip(r.label, repeat == r) { repeat = r } }
+            }
+            if (repeat == Repeat.SelectedDays) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DayOfWeek.values().forEach { day ->
+                        SelectChip(Copy.shortWeekday(day), day in repeatDays) {
+                            repeatDays = if (day in repeatDays) repeatDays - day else repeatDays + day
+                        }
                     }
                 }
+                if (repeatDays.isEmpty()) Label("Выбери хотя бы один день")
             }
-            if (repeatDays.isEmpty()) Label("Выбери хотя бы один день")
-        }
 
-        Label("Теги")
-        TagPicker(state, tagIds) { tagIds = it }
+            Label("Теги")
+            TagPicker(state, tagIds) { tagIds = it }
+            ChecklistEditor(checklist) { checklist = it }
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            BrutalSwitch(hot) { hot = it }
-            Text("🔥 Горит — всегда наверху", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        }
-
-        // Горит + время = будильник: показываем сразу, чтобы не было сюрпризом.
-        val alarmAt = parseTime(timeText).getOrNull()
-        androidx.compose.animation.AnimatedVisibility(hot && alarmAt != null && state.notif.alarmOn) {
-            Column(Modifier.fillMaxWidth().brutal(Palette.Red, radius = 13.dp, shadow = 0.dp).padding(horizontal = 14.dp, vertical = 10.dp)) {
-                Text("🔊 В ${alarmAt?.let { Copy.fmtTime(it) }} заорёт будильник", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text("Пока не ответишь. Мелодия — в настройках", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                BrutalSwitch(hot) { hot = it }
+                Text("🔥 Горит — всегда наверху", fontWeight = FontWeight.Bold, fontSize = 15.sp)
             }
-        }
 
-        problem?.let { Text(it, color = Palette.Red, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+            // Горит + время = будильник: показываем сразу, чтобы не было сюрпризом.
+            val alarmAt = parseTime(timeText).getOrNull()
+            androidx.compose.animation.AnimatedVisibility(hot && alarmAt != null && state.notif.alarmOn) {
+                Column(Modifier.fillMaxWidth().brutal(Palette.Red, radius = 13.dp, shadow = 0.dp).padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Text("🔊 В ${alarmAt?.let { Copy.fmtTime(it) }} заорёт будильник", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("Пока не ответишь. Мелодия — в настройках", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                }
+            }
+
+            problem?.let { Text(it, color = Palette.Red, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
+        }
 
         FlowRow(
             Modifier.fillMaxWidth().padding(top = 6.dp),

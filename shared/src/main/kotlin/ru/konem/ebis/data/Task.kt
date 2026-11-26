@@ -24,7 +24,43 @@ data class Task(
     val repeatDays: Set<DayOfWeek> = emptySet(),
     /** id тегов из [TaskData.tags]. Незнакомые id (тег удалили на другом устройстве) просто не показываются. */
     val tagIds: Set<Long> = emptySet(),
+    val checklist: List<ChecklistItem> = emptyList(),
+    val fieldTimes: Map<TaskField, Long> = emptyMap(),
 )
+
+data class ChecklistItem(val text: String, val done: Boolean = false)
+
+enum class TaskField {
+    Title, Description, Due, Time, Repeat, Hot, Order, Completion, Tags, Checklist;
+
+    fun value(task: Task): Any? = when (this) {
+        Title -> task.title
+        Description -> task.desc
+        Due -> task.due
+        Time -> task.time
+        Repeat -> task.repeat to task.repeatDays.sorted()
+        Hot -> task.hot
+        Order -> task.order
+        Completion -> Triple(task.done, task.doneAt, task.nextId)
+        Tags -> task.tagIds.sorted()
+        Checklist -> task.checklist
+    }
+
+    fun copyTo(target: Task, source: Task): Task = when (this) {
+        Title -> target.copy(title = source.title)
+        Description -> target.copy(desc = source.desc)
+        Due -> target.copy(due = source.due)
+        Time -> target.copy(time = source.time)
+        Repeat -> target.copy(repeat = source.repeat, repeatDays = source.repeatDays)
+        Hot -> target.copy(hot = source.hot)
+        Order -> target.copy(order = source.order)
+        Completion -> target.copy(done = source.done, doneAt = source.doneAt, nextId = source.nextId)
+        Tags -> target.copy(tagIds = source.tagIds)
+        Checklist -> target.copy(checklist = source.checklist)
+    }
+
+    fun timestamp(task: Task): Long = task.fieldTimes[this] ?: task.updatedAt
+}
 
 /**
  * id задачи для уведомлений и будильников, которым нужен Int. Новые id строятся от времени и в Int не влезают,

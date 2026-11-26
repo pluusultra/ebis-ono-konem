@@ -7,6 +7,7 @@ import java.io.File
 class TaskStore(context: Context) {
     private val file = File(context.filesDir, "tasks.json")
     private val tmp = File(context.filesDir, "tasks.json.tmp")
+    val importBackup = ImportBackup(File(context.filesDir, "before-import.json"))
     val sync = SyncFile(context)
 
     /** null, если файла ещё нет (первый запуск). */

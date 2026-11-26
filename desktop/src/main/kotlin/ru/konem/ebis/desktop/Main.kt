@@ -388,6 +388,7 @@ private fun onKey(e: KeyEvent, state: AppState, hide: () -> Unit): Boolean {
     }
     if (e.key == Key.Escape) {
         return when {
+            state.tools != null -> { state.tools = null; true }
             state.editing != null -> { state.editing = null; true }
             state.settingsOpen -> { state.settingsOpen = false; true }
             else -> false
@@ -403,6 +404,10 @@ private fun onKey(e: KeyEvent, state: AppState, hide: () -> Unit): Boolean {
         Action.Theme -> state.chooseTheme(if (Palette.IsDark) ThemeMode.Light else ThemeMode.Dark)
         Action.Save -> if (state.editing != null) state.saveRequests++ else return false
         Action.Hide -> hide()
+        Action.Search -> {
+            if (state.editing != null || state.settingsOpen) return false
+            state.tools = if (state.tools == TaskTool.Search) null else TaskTool.Search
+        }
         null -> return false
     }
     return true

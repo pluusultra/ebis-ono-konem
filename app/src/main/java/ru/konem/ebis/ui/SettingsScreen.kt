@@ -51,6 +51,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
@@ -127,6 +129,25 @@ private fun SettingsContent(onClose: () -> Unit, toast: ToastState) {
     val ctx = LocalContext.current
     val prefs = remember { Prefs(ctx) }
     val today = LocalDate.now().toEpochDay()
+    val version = remember { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }
+    var showTrash by remember { mutableStateOf(false) }
+    var hasImportBackup by remember { mutableStateOf(TaskRepo.hasImportBackup) }
+    var confirmRestore by remember { mutableStateOf(false) }
+    if (showTrash) TrashDialog({ showTrash = false }, onToast)
+    if (confirmRestore) {
+        AlertDialog(
+            onDismissRequest = { confirmRestore = false },
+            title = { Text("Восстановить копию перед импортом?") },
+            text = { Text("Текущий список задач будет заменён списком из копии.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmRestore = false
+                    onToast(if (TaskRepo.restoreImportBackup()) "Копия восстановлена" else "Не удалось восстановить копию")
+                }) { Text("Восстановить") }
+            },
+            dismissButton = { TextButton(onClick = { confirmRestore = false }) { Text("Отмена") } },
+        )
+    }
 
     var morning by remember { mutableIntStateOf(prefs.morningMin) }
     var nagCount by remember { mutableIntStateOf(prefs.nagCount) }
@@ -173,7 +194,7 @@ private fun SettingsContent(onClose: () -> Unit, toast: ToastState) {
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         val ok = runCatching {
-            val data = ru.konem.ebis.data.TaskData(TaskRepo.tasks, tags = TaskRepo.tags)
+            val data = TaskRepo.data
             ctx.contentResolver.openOutputStream(uri)!!.use { it.write(TaskStore.backup(data).toByteArray()) }
         }.isSuccess
         val n = TaskRepo.tasks.size
@@ -188,12 +209,13 @@ private fun SettingsContent(onClose: () -> Unit, toast: ToastState) {
         if (loaded == null) {
             onToast("Это не бэкап коня. Подсунь нормальный файл")
         } else {
-            val before = TaskRepo.snapshot()
-            // Теги из бэкапа добавляются к своим (свои не трогаем), чтобы у задач не пропали плашки.
-            TaskRepo.importTags(data.tags)
-            TaskRepo.replaceAll(loaded)
-            val n = loaded.size
-            toast.show("Загрузил $n ${Copy.plural(n, "задачу", "задачи", "задач")}", Copy.undoLabel) { TaskRepo.restore(before) }
+            if (TaskRepo.importFrom(data)) {
+                hasImportBackup = true
+                val n = loaded.size
+                toast.show("Загрузил $n ${Copy.plural(n, "задачу", "задачи", "задач")}", Copy.undoLabel) {
+                    if (!TaskRepo.restoreImportBackup()) onToast("Не удалось восстановить копию")
+                }
+            } else onToast("Импорт не выполнен. Не удалось сохранить копию")
         }
     }
 
@@ -355,6 +377,15 @@ private fun SettingsContent(onClose: () -> Unit, toast: ToastState) {
                     SelectChip("⬇️ Загрузить из файла", false) {
                         importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
                     }
+                }
+                SelectChip("Корзина", false) { showTrash = true }
+                if (hasImportBackup) SelectChip("Вернуть копию до импорта", false) { confirmRestore = true }
+            }
+
+            Section("Обновления", version?.let { "Версия $it" } ?: "Версия неизвестна") {
+                SelectChip("Скачать обновление", false) {
+                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(UPDATES_URL))) }
+                        .onFailure { onToast("Не удалось открыть GitHub в браузере") }
                 }
             }
 

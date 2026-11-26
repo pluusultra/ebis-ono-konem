@@ -196,6 +196,7 @@ enum class Action(val label: String, val hint: String, val default: String) {
     Theme("День / ночь", "", "Ctrl+D"),
     Save("Сохранить правку", "В окне редактирования", "Ctrl+Enter"),
     Hide("Спрятать окно", "В трей, если он включён", "Ctrl+W"),
+    Search("Поиск задач", "Во всех вкладках", "Ctrl+F"),
 }
 
 /** Сочетания клавиш. Хранятся строками вида «Ctrl+Shift+K». */

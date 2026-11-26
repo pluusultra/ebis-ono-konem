@@ -19,27 +19,12 @@ object TaskRepo {
     private lateinit var store: TaskStore
     private val io = Executors.newSingleThreadExecutor()
 
-    var tasks by mutableStateOf<List<Task>>(emptyList())
+    var data by mutableStateOf(TaskData(emptyList()))
         private set
 
-    /** Надгробия удалённых задач: id → когда удалили. Нужны для слияния с файлом с ПК. */
-    private var deleted: Map<Long, Long> = emptyMap()
-
-    /** Заведённые теги (название и цвет). Лежат в том же файле, что и задачи. */
-    var tags by mutableStateOf<List<Tag>>(emptyList())
-        private set
-
-    private var deletedTags: Map<Long, Long> = emptyMap()
-
-    /** Всё текущее состояние одним куском — для записи и слияния. */
-    private fun current() = TaskData(tasks, deleted, tags = tags, deletedTags = deletedTags)
-
-    private fun take(data: TaskData) {
-        tasks = data.tasks
-        deleted = data.deleted
-        tags = data.tags
-        deletedTags = data.deletedTags
-    }
+    val tasks get() = data.tasks
+    val tags get() = data.tags
+    private fun current() = data.copy(seeded = false)
 
     /** В списке только нетронутые обучалки первого запуска. */
     private var seeded = false
@@ -54,16 +39,16 @@ object TaskRepo {
         if (::store.isInitialized) return
         store = TaskStore(context.applicationContext)
         val data = store.load() ?: TaskData(seed(), seeded = true).also { store.save(it) }
-        take(data)
+        this.data = data
         seeded = data.seeded
     }
 
     fun add(
         title: String, desc: String, due: LocalDate, time: Int? = null,
         repeat: Repeat = Repeat.None, hot: Boolean = false, repeatDays: Set<DayOfWeek> = emptySet(),
-        tagIds: Set<Long> = emptySet(),
+        tagIds: Set<Long> = emptySet(), checklist: List<ChecklistItem> = emptyList(),
     ): Long {
-        val (next, id) = TaskOps.add(tasks, title, desc, due, time, repeat, hot, repeatDays, tagIds)
+        val (next, id) = TaskOps.add(tasks, title, desc, due, time, repeat, hot, repeatDays, tagIds, checklist)
         update(next)
         return id
     }
@@ -71,12 +56,12 @@ object TaskRepo {
     /** Правка: меняются только поля, которые есть в форме. */
     fun edit(
         id: Long, title: String, desc: String, due: LocalDate, time: Int?, repeat: Repeat, hot: Boolean,
-        repeatDays: Set<DayOfWeek>, tagIds: Set<Long>,
-    ) = update(TaskOps.edit(tasks, id, title, desc, due, time, repeat, hot, repeatDays, tagIds))
+        repeatDays: Set<DayOfWeek>, tagIds: Set<Long>, checklist: List<ChecklistItem>? = null, original: Task? = null,
+    ) = update(TaskOps.edit(tasks, id, title, desc, due, time, repeat, hot, repeatDays, tagIds, checklist, original))
 
     /** Теги меняются сразу с отметкой времени (см. [TagOps]), задачи при этом не трогаются. */
     private fun updateTags(next: TaskData) {
-        take(next)
+        data = next
         seeded = false
         persist(next, now = false)
     }
@@ -92,14 +77,35 @@ object TaskRepo {
 
     fun deleteTag(id: Long) = updateTags(TagOps.delete(current(), id))
 
-    /** Теги из бэкапа: незнакомые id добавляются как есть, уже имеющиеся не трогаем. */
-    fun importTags(incoming: List<Tag>) {
-        val known = tags.map { it.id }.toSet()
-        val fresh = incoming.filter { it.id !in known }
-        if (fresh.isEmpty()) return
-        val now = System.currentTimeMillis()
-        updateTags(current().copy(tags = tags + fresh.map { it.copy(updatedAt = now) }, deletedTags = deletedTags - fresh.map { it.id }.toSet()))
+    fun restoreTask(id: Long): Boolean {
+        val next = TaskOps.restoreDeleted(current(), id)
+        if (next == current()) return false
+        apply(next)
+        return true
     }
+
+    fun restoreTag(id: Long): Boolean {
+        val next = TagOps.restoreDeleted(current(), id)
+        if (next == current()) return false
+        apply(next)
+        return true
+    }
+
+    val hasImportBackup get() = store.importBackup.available
+
+    fun importFrom(incoming: TaskData): Boolean = runCatching {
+        val before = current()
+        val next = importTasks(before, incoming)
+        store.importBackup.save(before)
+        apply(next)
+    }.isSuccess
+
+    fun restoreImportBackup(): Boolean = runCatching {
+        apply(importTasks(current(), store.importBackup.load(), restore = true))
+    }.isSuccess
+
+    fun batch(ids: Set<Long>, action: OverdueAction, tags: Set<Long> = emptySet()) =
+        update(TaskOps.applyToOverdue(tasks, ids, action, tags.intersect(this.tags.map { it.id }.toSet())))
 
     /** Возвращает новое состояние: true — задача теперь сделана. */
     fun toggle(id: Long, sync: Boolean = false): Boolean {
@@ -121,7 +127,7 @@ object TaskRepo {
 
     fun restore(snapshot: List<Task>) = update(snapshot)
 
-    fun replaceAll(newTasks: List<Task>) = update(newTasks)
+    fun undo(before: List<Task>, after: List<Task>) = update(TaskOps.undo(tasks, before, after))
 
     /** Дождаться, пока всё поставленное в очередь записано в файл (для ресиверов перед finish()). */
     fun flush() {
@@ -165,7 +171,7 @@ object TaskRepo {
 
     /** Принять уже готовое состояние как есть, без новых отметок времени. */
     private fun apply(data: TaskData) {
-        take(data)
+        this.data = data.copy(seeded = false)
         seeded = false
         persist(data.copy(seeded = false), now = false)
         onChanged?.invoke(data.tasks)
@@ -178,7 +184,7 @@ object TaskRepo {
     private fun update(newTasks: List<Task>, sync: Boolean = false) {
         if (newTasks == tasks) return
         val data = TaskOps.stamp(current(), newTasks)
-        take(data)
+        this.data = data
         seeded = false
         persist(data, now = sync)
         onChanged?.invoke(data.tasks)
@@ -199,7 +205,7 @@ object TaskRepo {
     private fun adopt(written: TaskData) {
         val merged = mergeTasks(current(), written)
         if (merged == current()) return
-        take(merged)
+        data = merged
         persist(merged, now = false)
         onChanged?.invoke(merged.tasks)
     }

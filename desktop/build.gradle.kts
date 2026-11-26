@@ -60,6 +60,11 @@ val appVersion: String = (project.findProperty("appVersion") as String?)?.remove
     "1.$months.$minute"
 }
 
+tasks.processResources {
+    inputs.property("appVersion", appVersion)
+    filesMatching("ebis-version.properties") { expand("appVersion" to appVersion) }
+}
+
 compose.desktop {
     application {
         mainClass = "ru.konem.ebis.desktop.MainKt"

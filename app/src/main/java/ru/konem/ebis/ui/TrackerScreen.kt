@@ -102,6 +102,8 @@ import ru.konem.ebis.R
 import ru.konem.ebis.data.Repeat
 import ru.konem.ebis.data.TagOps
 import ru.konem.ebis.data.Task
+import ru.konem.ebis.data.OverdueAction
+import androidx.compose.runtime.saveable.rememberSaveable
 import ru.konem.ebis.data.TaskRepo
 import ru.konem.ebis.data.toLocalDate
 import ru.konem.ebis.ui.theme.Body
@@ -193,9 +195,24 @@ fun TrackerScreen(
     onToggleSort: () -> Unit,
     tagFilter: Set<Long> = emptySet(),
     onTagFilter: (Set<Long>) -> Unit = {},
+    onBatch: (Set<Long>, OverdueAction, Set<Long>) -> Unit = { _, _, _ -> },
 ) {
     val today = LocalDate.now()
     val counts = Tab.entries.associateWith { filterTasks(tasks, it, today).size }
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var managingOverdue by rememberSaveable { mutableStateOf(false) }
+    if (searching) {
+        TaskSearchDialog(tasks, TaskRepo.tags, onEdit = {
+            searching = false
+            actions.onEdit(it)
+        }, onClose = { searching = false })
+    }
+    if (managingOverdue) {
+        OverdueDialog(tasks, TaskRepo.tags, onClose = { managingOverdue = false }) { ids, action, selectedTags ->
+            onBatch(ids, action, selectedTags)
+            managingOverdue = false
+        }
+    }
 
     // Шапка падает сверху с пружинкой после появления экрана.
     val drop = remember { Animatable(-1f) }
@@ -221,6 +238,15 @@ fun TrackerScreen(
                     .graphicsLayer { translationY = drop.value * size.height },
             )
             Tabs(tab, onTab, counts)
+            Row(
+                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                GhostChip("Поиск") { searching = true }
+                if (tasks.any { !it.done && it.due.isBefore(today) }) {
+                    GhostChip("Разгрести просроченное") { managingOverdue = true }
+                }
+            }
             AnimatedVisibility(
                 banner != null,
                 enter = fadeIn() + expandVertically(Motion.smooth()),
@@ -838,6 +864,7 @@ private fun TaskCard(
                     if (task.hot && !task.done) Badge("🔥 горит", Copy.BadgeKind.Late)
                     task.time?.let { Badge("⏰ " + Copy.fmtTime(it), Copy.BadgeKind.Normal) }
                     if (task.repeat != Repeat.None) Badge("🔁 " + Copy.repeatLabel(task), Copy.BadgeKind.Normal)
+                    if (task.checklist.isNotEmpty()) Badge("✓ " + task.checklist.count { it.done } + "/" + task.checklist.size, Copy.BadgeKind.Normal)
                     TagOps.of(task, TaskRepo.tags).forEach { TagBadge(it) }
                 }
             }

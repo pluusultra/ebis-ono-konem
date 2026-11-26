@@ -41,6 +41,7 @@ import ru.konem.ebis.Incoming
 import ru.konem.ebis.TasksViewModel
 import ru.konem.ebis.notify.Notifier
 import ru.konem.ebis.data.TaskRepo
+import ru.konem.ebis.data.OverdueAction
 import ru.konem.ebis.notify.Prefs
 import ru.konem.ebis.widget.Widgets
 import ru.konem.ebis.ui.theme.Palette
@@ -158,8 +159,9 @@ fun AppRoot(vm: TasksViewModel = viewModel()) {
     fun withUndo(message: String, block: () -> Unit) {
         val before = vm.snapshot()
         block()
+        val after = vm.snapshot()
         toast.show(message, Copy.undoLabel) {
-            vm.restore(before)
+            vm.undo(before, after)
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
     }
@@ -184,6 +186,7 @@ fun AppRoot(vm: TasksViewModel = viewModel()) {
                     onToggle = { id ->
                         val before = vm.snapshot()
                         val done = vm.toggle(id)
+                        val after = vm.snapshot()
                         Notifier.cancelForTask(ctx, id)
                         val all = if (done) Notifier.checkAllDone(ctx) else null
                         if (all != null) {
@@ -195,7 +198,7 @@ fun AppRoot(vm: TasksViewModel = viewModel()) {
                             done -> Copy.praise.random()
                             else -> Copy.undo.random()
                         }
-                        toast.show(msg, Copy.undoLabel) { vm.restore(before) }
+                        toast.show(msg, Copy.undoLabel) { vm.undo(before, after) }
                     },
                     onPostpone = { id ->
                         withUndo(Copy.postponed.random()) {
@@ -224,6 +227,16 @@ fun AppRoot(vm: TasksViewModel = viewModel()) {
                 },
                 tagFilter = tagFilter,
                 onTagFilter = { tagFilterSaved = it.toLongArray() },
+                onBatch = { ids, action, tags ->
+                    withUndo("Изменения применены") {
+                        TaskRepo.batch(ids, action, tags)
+                        when (action) {
+                            OverdueAction.Tomorrow, OverdueAction.Complete -> ids.forEach { Notifier.cancelForTask(ctx, it) }
+                            OverdueAction.AddTags, OverdueAction.RemoveTags -> Unit
+                        }
+                        if (action == OverdueAction.Complete && Notifier.checkAllDone(ctx) != null) streakTick++
+                    }
+                },
             )
         }
 
@@ -255,9 +268,9 @@ fun AppRoot(vm: TasksViewModel = viewModel()) {
             onSave = { d ->
                 sheetOpen = false
                 if (d.id != null) {
-                    withUndo(Copy.edited) { vm.edit(d.id, d.title, d.desc, d.due, d.time, d.repeat, d.hot, d.repeatDays, d.tagIds) }
+                    withUndo(Copy.edited) { vm.edit(d.id, d.title, d.desc, d.due, d.time, d.repeat, d.hot, d.repeatDays, d.tagIds, d.checklist, d.original) }
                 } else {
-                    vm.add(d.title, d.desc, d.due, d.time, d.repeat, d.hot, d.repeatDays, d.tagIds)
+                    vm.add(d.title, d.desc, d.due, d.time, d.repeat, d.hot, d.repeatDays, d.tagIds, d.checklist)
                     tab = if (!d.due.isAfter(LocalDate.now())) Tab.Today else Tab.All
                     toast.show(Copy.saved)
                 }

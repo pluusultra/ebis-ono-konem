@@ -57,9 +57,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import ru.konem.ebis.data.TaskJson
+import ru.konem.ebis.ui.UPDATES_URL
+import java.time.LocalDate
+import java.util.Properties
+import javax.swing.JFileChooser
+import javax.swing.JOptionPane
+import javax.swing.filechooser.FileNameExtensionFilter
 import androidx.compose.ui.unit.sp
 import ru.konem.ebis.ui.Copy
 import ru.konem.ebis.notify.Alarm
@@ -182,6 +190,12 @@ private fun Chips(content: @Composable () -> Unit) {
 
 @Composable
 private fun GeneralPane(state: AppState) {
+    val uri = LocalUriHandler.current
+    val version = remember {
+        AppState::class.java.getResourceAsStream("/ebis-version.properties")?.use { stream ->
+            Properties().apply { load(stream) }.getProperty("version")
+        }
+    }
     Item(
         "Тема",
         if (Launcher.isWindows) "День, ночь или как в Windows"
@@ -202,6 +216,55 @@ private fun GeneralPane(state: AppState) {
     Item("«Сегодня»: новые сверху", "Свежие задачи в начале списка, а не в конце") {
         BrutalSwitch(state.newFirst) { state.toggleSort() }
     }
+    Item("Обновления", version?.let { "Версия $it" } ?: "Версия неизвестна", stack = true) {
+        GhostChip("Скачать обновление") {
+            runCatching { uri.openUri(UPDATES_URL) }.onFailure { state.show("Не удалось открыть GitHub в браузере") }
+        }
+    }
+    Item("Резервные копии", "Перед импортом сохраняется локальная копия задач и тегов", stack = true) {
+        Chips {
+            GhostChip("Корзина") { state.tools = TaskTool.Trash }
+            GhostChip("Сохранить в файл") { exportBackup(state) }
+            GhostChip("Загрузить из файла") { loadBackup(state) }
+            if (state.store.importBackup.available) {
+                GhostChip("Вернуть копию до импорта") {
+                    if (confirmReplace("Восстановить копию перед импортом?")) state.restoreImportBackup()
+                }
+            }
+        }
+    }
+}
+
+private fun backupChooser() = JFileChooser().apply {
+    fileFilter = FileNameExtensionFilter("Бэкап задач (*.json)", "json")
+}
+
+private fun confirmReplace(title: String) = JOptionPane.showConfirmDialog(
+    null, "Текущий список задач будет заменён.", title, JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE,
+) == JOptionPane.OK_OPTION
+
+private fun exportBackup(state: AppState) {
+    val chooser = backupChooser().apply { selectedFile = File("ebis-backup-" + LocalDate.now() + ".json") }
+    if (chooser.showSaveDialog(null) != JFileChooser.APPROVE_OPTION) return
+    val selected = chooser.selectedFile
+    val file = if (selected.extension.equals("json", ignoreCase = true)) selected else File(selected.path + ".json")
+    runCatching {
+        require(file.canonicalFile != state.store.file?.canonicalFile)
+        if (file.exists() && JOptionPane.showConfirmDialog(
+                null, "Заменить выбранный файл?", "Бэкап", JOptionPane.OK_CANCEL_OPTION,
+            ) != JOptionPane.OK_OPTION) return
+        ru.konem.ebis.data.ImportBackup(file).save(state.data)
+    }.onSuccess { state.show("Бэкап сохранён") }.onFailure { state.show("Не удалось сохранить бэкап") }
+}
+
+private fun loadBackup(state: AppState) {
+    val chooser = backupChooser()
+    if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) return
+    val incoming = runCatching { TaskJson.parseData(chooser.selectedFile.readText()) }.getOrElse {
+        state.show("Не удалось прочитать файл задач")
+        return
+    }
+    if (confirmReplace("Импортировать задачи из файла?")) state.importFrom(incoming)
 }
 
 // ── Оформление ─────────────────────────────────────────────────

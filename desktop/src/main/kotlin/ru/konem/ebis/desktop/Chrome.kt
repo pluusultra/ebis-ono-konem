@@ -1,6 +1,7 @@
 package ru.konem.ebis.desktop
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.expandHorizontally
@@ -56,6 +57,7 @@ import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -395,7 +397,8 @@ fun Header(state: AppState, frame: WindowFrame?, today: LocalDate, width: Dp, on
     ) {
         val alive = lively()
         HayParticles(Modifier.matchParentSize().graphicsLayer(), paused = !alive || state.settingsOpen || state.editing != null) { mouse }
-        val logo by animateDpAsState(if (compact) 46.dp else 58.dp, Motion.smooth(), label = "logo")
+        val logo by animateDpAsState(if (compact) 50.dp else 64.dp, Motion.smooth(), label = "logo")
+        val logoShape = RoundedCornerShape(16.dp)
         val titleSize by animateFloatAsState(if (compact) 20f else 27f, Motion.smooth(), label = "title")
         val pad by animateDpAsState(if (compact) 10.dp else 14.dp, Motion.smooth(), label = "hpad")
         Row(
@@ -404,18 +407,30 @@ fun Header(state: AppState, frame: WindowFrame?, today: LocalDate, width: Dp, on
         ) {
             Box(
                 Modifier.entrance(250, dy = 0.dp, scaleFrom = 0f, duration = 650)
-                    .size(logo)
-                    .brutal(Palette.HeaderBtn, radius = 16.dp, shadow = 3.dp, borderColor = Palette.OnHay, shadowColor = Palette.OnHay),
-                contentAlignment = Alignment.Center,
+                    .size(logo),
             ) {
-                Image(painterResource("logo.xml"), null, Modifier.size(logo * 0.76f))
+                Box(
+                    Modifier.matchParentSize()
+                        .brutal(Palette.HeaderBtn, radius = 16.dp, shadow = 3.dp, border = 0.dp, shadowColor = Palette.OnHay),
+                )
+                Box(
+                    Modifier.matchParentSize().clip(logoShape).border(2.5.dp, Palette.OnHay, logoShape),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    HeaderMascot(state.look.mascot, alive, Modifier.size(logo - 5.dp).offset(y = 1.dp))
+                }
             }
             Spacer(Modifier.width(pad + 2.dp))
             Column(Modifier.widthIn(max = width * 0.42f).entrance(320)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Ебись оно", fontFamily = Display, fontWeight = FontWeight.Black, fontSize = titleSize.sp, letterSpacing = (-0.6).sp, color = Palette.OnHay, maxLines = 1)
-                    HorseEmoji(titleSize * 1.18f, alive)
-                }
+                Text(
+                    "Ебись оно конём",
+                    fontFamily = Display,
+                    fontWeight = FontWeight.Black,
+                    fontSize = titleSize.sp,
+                    letterSpacing = (-0.6).sp,
+                    color = Palette.OnHay,
+                    maxLines = 2,
+                )
                 AnimatedContent(
                     Copy.subtitle(snap.remaining.size),
                     transitionSpec = {
@@ -599,32 +614,79 @@ fun TooltipArea(text: String, content: @Composable () -> Unit) {
     ) { content() }
 }
 
-/** 🐴 раз в 3.5 секунды дёргает головой — пока окном пользуются. */
+private enum class SleepyExpression { Rest, EyeRoll, Sigh }
+
 @Composable
-private fun HorseEmoji(size: Float, alive: Boolean) {
+private fun HeaderMascot(mascot: HorseMascot, alive: Boolean, modifier: Modifier) {
     val rot = remember { androidx.compose.animation.core.Animatable(0f) }
-    LaunchedEffect(alive) {
-        if (!alive) {
-            rot.snapTo(0f)
-            return@LaunchedEffect
-        }
+    val breath = remember { androidx.compose.animation.core.Animatable(0f) }
+    var expression by remember { mutableStateOf(SleepyExpression.Rest) }
+    val sleepy = mascot == HorseMascot.Sleepy
+
+    LaunchedEffect(mascot, alive) {
+        expression = SleepyExpression.Rest
+        rot.snapTo(0f)
+        breath.snapTo(0f)
+        if (!alive) return@LaunchedEffect
+
+        var gesture = 0
         while (true) {
-            kotlinx.coroutines.delay(2800)
-            rot.animateTo(0f, keyframes {
-                durationMillis = 700
-                -14f at 175
-                10f at 350
-                -6f at 525
-            })
+            kotlinx.coroutines.delay(if (sleepy) 3600 else 2800)
+            when {
+                sleepy && gesture == 0 -> {
+                    expression = SleepyExpression.EyeRoll
+                    rot.animateTo(0f, keyframes {
+                        durationMillis = 680
+                        -5f at 200
+                        -5f at 450
+                    })
+                    expression = SleepyExpression.Rest
+                }
+                sleepy && gesture == 2 -> {
+                    breath.animateTo(-1f, tween(260))
+                    expression = SleepyExpression.Sigh
+                    breath.animateTo(1f, tween(560))
+                    expression = SleepyExpression.Rest
+                    breath.animateTo(0f, tween(300))
+                }
+                else -> rot.animateTo(0f, keyframes {
+                    durationMillis = 700
+                    -14f at 175
+                    10f at 350
+                    -6f at 525
+                })
+            }
+            gesture = (gesture + 1) % 3
         }
     }
-    Text(
-        "🐴", fontSize = size.sp, lineHeight = size.sp,
-        modifier = Modifier.padding(start = 8.dp).graphicsLayer {
+
+    Box(
+        modifier.graphicsLayer {
             rotationZ = rot.value
+            translationY = 1.8.dp.toPx() * breath.value
+            scaleY = 1f - 0.065f * breath.value
             transformOrigin = TransformOrigin(0.5f, 0.9f)
         },
-    )
+    ) {
+        MascotImage(mascot, Modifier.matchParentSize())
+        if (sleepy) {
+            val eyeRoll = painterResource("mascots/sleepy-eye-roll.png")
+            val sigh = painterResource("mascots/sleepy-sigh.png")
+            Crossfade(expression, modifier = Modifier.matchParentSize(), animationSpec = tween(160), label = "mascotExpression") { frame ->
+                val portrait = when (frame) {
+                    SleepyExpression.Rest -> null
+                    SleepyExpression.EyeRoll -> eyeRoll
+                    SleepyExpression.Sigh -> sigh
+                }
+                if (portrait != null) Image(portrait, contentDescription = null, modifier = Modifier.fillMaxSize())
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MascotImage(mascot: HorseMascot, modifier: Modifier) {
+    Image(painterResource(mascot.image), contentDescription = null, modifier = modifier)
 }
 
 /** Сено летит справа налево и разлетается от мышки. Гаснет слева, чтобы не лезть под название. */

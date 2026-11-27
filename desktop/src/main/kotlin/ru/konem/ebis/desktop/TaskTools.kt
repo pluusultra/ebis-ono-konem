@@ -1,6 +1,5 @@
 package ru.konem.ebis.desktop
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -16,29 +15,20 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.konem.ebis.data.ChecklistItem
-import ru.konem.ebis.data.DaySnapshot
-import ru.konem.ebis.data.OverdueAction
 import ru.konem.ebis.data.Tag
-import ru.konem.ebis.data.TagOps
-import ru.konem.ebis.ui.Copy
 import ru.konem.ebis.ui.QuickParse
-import ru.konem.ebis.ui.TaskSearch
-import java.time.LocalDate
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -84,14 +74,9 @@ internal fun ChecklistEditor(items: List<ChecklistItem>, onChange: (List<Checkli
 }
 
 @Composable
-internal fun BoxScope.TaskTools(state: AppState, today: LocalDate) {
-    val tool = state.tools ?: return
-    val close = { state.tools = null }
-    val title = when (tool) {
-        TaskTool.Search -> "Поиск по задачам"
-        TaskTool.Overdue -> "Разгрести просроченное"
-        TaskTool.Trash -> "Корзина"
-    }
+internal fun BoxScope.TrashOverlay(state: AppState) {
+    if (!state.trashOpen) return
+    val close = { state.trashOpen = false }
     Overlay(visible = true, onDismiss = close) {
         Column(
             Modifier.widthIn(max = 640.dp).fillMaxWidth()
@@ -99,86 +84,10 @@ internal fun BoxScope.TaskTools(state: AppState, today: LocalDate) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, Modifier.weight(1f), fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 21.sp)
+                Text("Корзина", Modifier.weight(1f), fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 21.sp)
                 CloseButton(close)
             }
-            when (tool) {
-                TaskTool.Search -> SearchPanel(state)
-                TaskTool.Overdue -> OverduePanel(state, today)
-                TaskTool.Trash -> TrashPanel(state)
-            }
-        }
-    }
-}
-
-@Composable
-private fun SearchPanel(state: AppState) {
-    var query by remember { mutableStateOf("") }
-    val focus = remember { FocusRequester() }
-    val matches = remember(state.tasks, state.tags, query) { TaskSearch.find(state.tasks, state.tags, query) }
-    Field(query, { query = it }, "Название, описание или #тег", singleLine = true, modifier = Modifier.focusRequester(focus))
-    LaunchedEffect(Unit) { focus.requestFocus() }
-    if (query.isNotBlank() && matches.isEmpty()) Text("Ничего не нашлось", color = Palette.Mute)
-    LazyColumn(Modifier.heightIn(max = 360.dp)) {
-        items(matches, key = { it.id }) { task ->
-            Column(Modifier.fillMaxWidth().clickable {
-                state.tools = null
-                state.editing = task
-            }.padding(vertical = 8.dp)) {
-                Text(task.title, color = Palette.Ink)
-                val details = listOf(if (task.done) "Сделано" else Copy.shortDate(task.due)) +
-                    TagOps.of(task, state.tags).map { "#" + it.name }
-                Text(details.joinToString(" · "), color = Palette.Mute)
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun OverduePanel(state: AppState, today: LocalDate) {
-    val overdue = DaySnapshot(state.tasks, today).overdue
-    if (overdue.isEmpty()) {
-        Text("Просроченных задач нет", color = Palette.Mute)
-        return
-    }
-    val available = overdue.map { it.id }.toSet()
-    var picked by remember { mutableStateOf(emptySet<Long>()) }
-    var tagIds by remember { mutableStateOf(emptySet<Long>()) }
-    val selected = picked.intersect(available)
-    val selectedTags = tagIds.intersect(state.tags.map { it.id }.toSet())
-    fun apply(action: OverdueAction, tags: Set<Long> = emptySet()) {
-        state.batch(selected, action, tags)
-        state.tools = null
-    }
-    SelectChip("Выбрать все (" + overdue.size + ")", selected == available) {
-        picked = if (selected == available) emptySet() else available
-    }
-    LazyColumn(Modifier.heightIn(max = 230.dp)) {
-        items(overdue, key = { it.id }) { task ->
-            val toggle = { picked = if (task.id in picked) picked - task.id else picked + task.id }
-            Row(Modifier.fillMaxWidth().clickable(onClick = toggle), verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(task.id in selected, { toggle() })
-                Text(task.title, color = Palette.Ink)
-            }
-        }
-    }
-    if (selected.isEmpty()) return
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        GhostChip("На завтра") { apply(OverdueAction.Tomorrow) }
-        GhostChip("Отметить сделанными") { apply(OverdueAction.Complete) }
-    }
-    if (state.tags.isNotEmpty()) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            state.tags.forEach { tag ->
-                SelectChip(tag.name, tag.id in selectedTags) { tagIds = if (tag.id in tagIds) tagIds - tag.id else tagIds + tag.id }
-            }
-        }
-        if (selectedTags.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                GhostChip("Добавить теги") { apply(OverdueAction.AddTags, selectedTags) }
-                GhostChip("Снять теги") { apply(OverdueAction.RemoveTags, selectedTags) }
-            }
+            TrashPanel(state)
         }
     }
 }

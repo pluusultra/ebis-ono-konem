@@ -3,6 +3,7 @@ package ru.konem.ebis.desktop
 import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -46,6 +47,22 @@ class LookTest {
             val l = LookStore(node).load()
             assertEquals(Color(0xFFE6F4EC), l.bgLight)
             assertNull(l.bgDark)
+        } finally {
+            node.removeNode()
+        }
+    }
+
+    @Test
+    fun mascotPreferenceDefaultsAndRoundTrips() {
+        val node = Preferences.userRoot().node("ru/konem/ebis-desktop-mascot-test")
+        try {
+            val store = LookStore(node)
+            HorseMascot.entries.forEach { assertNotNull(javaClass.getResource("/${it.image}")) }
+            assertEquals(HorseMascot.Sleepy, store.load().mascot)
+            store.save(Look(mascot = HorseMascot.Heckler))
+            assertEquals(HorseMascot.Heckler, LookStore(node).load().mascot)
+            node.put("look.mascot", "unknown")
+            assertEquals(HorseMascot.Sleepy, store.load().mascot)
         } finally {
             node.removeNode()
         }

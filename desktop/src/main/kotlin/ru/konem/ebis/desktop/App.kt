@@ -27,6 +27,7 @@ import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -50,6 +51,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -82,6 +84,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.TextRange
@@ -102,6 +107,7 @@ import ru.konem.ebis.data.Task
 import ru.konem.ebis.data.toLocalDate
 import ru.konem.ebis.ui.Copy
 import ru.konem.ebis.ui.QuickParse
+import ru.konem.ebis.ui.TaskSearch
 import java.io.File
 import java.time.LocalDate
 import kotlin.math.min
@@ -128,15 +134,16 @@ fun filterTasks(tasks: List<Task>, tab: Tab, today: LocalDate, newFirst: Boolean
     )
 }
 
+private fun groupedRows(groups: List<Pair<String, List<Task>>>): List<Row> = groups.filter { it.second.isNotEmpty() }
+    .flatMap { (label, tasks) -> listOf(Row.Header(label, tasks.size)) + tasks.map { Row.Item(it) } }
+
 private fun buildRows(tab: Tab, tasks: List<Task>, today: LocalDate, newFirst: Boolean): List<Row> {
     val list = filterTasks(tasks, tab, today, newFirst)
-    fun grouped(groups: List<Pair<String, List<Task>>>) = groups.filter { it.second.isNotEmpty() }
-        .flatMap { (label, ts) -> listOf(Row.Header(label, ts.size)) + ts.map { Row.Item(it) } }
     return when (tab) {
         Tab.Today -> list.map { Row.Item(it) }
         Tab.All -> {
             val week = today.plusDays(7)
-            grouped(
+            groupedRows(
                 listOf(
                     "🪦 Просрано" to list.filter { it.due.isBefore(today) },
                     "🔥 Сегодня" to list.filter { it.due == today },
@@ -146,7 +153,7 @@ private fun buildRows(tab: Tab, tasks: List<Task>, today: LocalDate, newFirst: B
                 )
             )
         }
-        Tab.Done -> grouped(list.groupBy { it.doneAt.toLocalDate() }.entries.sortedByDescending { it.key }.map { (day, ts) ->
+        Tab.Done -> groupedRows(list.groupBy { it.doneAt.toLocalDate() }.entries.sortedByDescending { it.key }.map { (day, ts) ->
             when (day) {
                 today -> "Сегодня"
                 today.minusDays(1) -> "Вчера"
@@ -238,7 +245,7 @@ fun App(
         EditOverlay(state, today)
         SettingsOverlay(state, pickFolder, pickColor, reminders, compact = w < 760.dp, pickSound = pickSound)
         Onboarding(state, pickFolder)
-        TaskTools(state, today)
+        TrashOverlay(state)
         ToastHost(state, Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
 
         if (cover.value > 0f) Box(Modifier.fillMaxSize().drawBehind { drawRect(Palette.Paper, alpha = cover.value) })
@@ -258,7 +265,7 @@ private fun Sidebar(state: AppState, today: LocalDate, rail: Boolean, compact: B
     ) {
         val iconPad by androidx.compose.animation.core.animateDpAsState(if (compact) 10.dp else if (rail) 18.dp else 16.dp, Motion.smooth(), label = "iconPad")
         Tab.entries.forEachIndexed { i, t ->
-            TabPill(t, filterTasks(state.tasks, t, today).size, state.tab == t, rail, iconPad, Modifier.entrance(280 + i * 70, dx = (-24).dp, dy = 0.dp)) { state.tab = t }
+            TabPill(t, filterTasks(state.tasks, t, today).size, state.tab == t && state.searchQuery.isBlank(), rail, iconPad, Modifier.entrance(280 + i * 70, dx = (-24).dp, dy = 0.dp)) { state.selectTab(t) }
         }
         Spacer(Modifier.weight(1f))
         SyncStatus(state, rail, Modifier.entrance(600, dy = 0.dp))
@@ -378,19 +385,46 @@ private fun shortPath(f: File): String {
 // ── Лента задач ────────────────────────────────────────────────
 
 @Composable
-private fun Main(state: AppState, today: LocalDate, quickAdd: FocusRequester, compact: Boolean) {
+internal fun Main(state: AppState, today: LocalDate, quickAdd: FocusRequester, compact: Boolean) {
     val look = Palette.look
+    val searching = state.searchQuery.isNotBlank()
+    val selecting = state.overdueSelection != null
+    val filter = state.tagFilter
+    val availableOverdue = remember(state.tasks, state.tab, today, filter, searching) {
+        if (searching || state.tab == Tab.Done) emptySet()
+        else state.tasks.filter { !it.done && it.due.isBefore(today) && TagOps.matches(it, filter) }.map { it.id }.toSet()
+    }
+    var searchOrder by remember { mutableStateOf(ListOrder.Due) }
+    val tabOrder = if (state.newFirst) ListOrder.Newest else ListOrder.Oldest
+    val orders = when {
+        searching -> ListOrder.entries
+        state.tab == Tab.Today -> listOf(ListOrder.Newest, ListOrder.Oldest)
+        else -> emptyList()
+    }
+    val side = if (compact) 14.dp else 24.dp
     Box(Modifier.fillMaxSize().patternBackground(look.pattern)) {
         Watermark(Modifier.matchParentSize(), compact)
         Column(Modifier.fillMaxSize()) {
             QuickAdd(state, today, quickAdd, compact)
-            Row(
-                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                GhostChip("Поиск", small = true) { state.tools = TaskTool.Search }
-                if (state.tasks.any { !it.done && it.due.isBefore(today) }) {
-                    GhostChip("Разгрести просроченное", small = true) { state.tools = TaskTool.Overdue }
+            AnimatedContent(
+                selecting,
+                modifier = Modifier.padding(start = side, end = side + 6.dp).fillMaxWidth(),
+                transitionSpec = {
+                    (fadeIn(tween(210)) + slideInVertically(tween(210)) { -it / 4 }) togetherWith fadeOut(tween(110))
+                },
+                label = "taskControls",
+            ) { showSelection ->
+                if (showSelection) {
+                    OverdueSelectionBar(state, availableOverdue, today)
+                } else {
+                    TaskListControls(
+                        state, compact, orders, if (searching) searchOrder else tabOrder,
+                        onOrder = {
+                            if (searching) searchOrder = it
+                            else if (it != tabOrder) state.toggleSort()
+                        },
+                        active = !selecting,
+                    )
                 }
             }
             AnimatedContent(
@@ -399,7 +433,7 @@ private fun Main(state: AppState, today: LocalDate, quickAdd: FocusRequester, co
                     (fadeIn(tween(220)) + slideInVertically(Motion.snappy()) { 40 }) togetherWith fadeOut(tween(120))
                 },
                 label = "tabList",
-            ) { tab -> TaskList(state, tab, today, compact) }
+            ) { tab -> TaskList(state, tab, today, compact, searchOrder, availableOverdue) }
         }
     }
 }
@@ -507,7 +541,8 @@ private fun QuickAdd(state: AppState, today: LocalDate, focus: FocusRequester, c
             state.show(Copy.emptyTitle)
             return
         }
-        state.add(parsed.title, parsed.date ?: today, parsed.time, parsed.repeat ?: Repeat.None, parsed.hot, tagIds = state.tagFilter + parsed.tagIds)
+        val inheritedTags = if (state.searchQuery.isBlank()) state.tagFilter else emptySet()
+        state.add(parsed.title, parsed.date ?: today, parsed.time, parsed.repeat ?: Repeat.None, parsed.hot, tagIds = inheritedTags + parsed.tagIds)
         val d = parsed.date ?: today
         if (state.tab == Tab.Today && d.isAfter(today)) state.show("Накинул на «${Copy.dayLabel(d, today).lowercase()}» — смотри во «Вся херня»")
         input = TextFieldValue()
@@ -581,13 +616,26 @@ private fun QuickAdd(state: AppState, today: LocalDate, focus: FocusRequester, c
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TaskList(state: AppState, tab: Tab, today: LocalDate, compact: Boolean) {
+private fun TaskList(
+    state: AppState, tab: Tab, today: LocalDate, compact: Boolean, searchOrder: ListOrder, availableOverdue: Set<Long>,
+) {
     val filter = state.tagFilter
-    val rows = remember(state.tasks, tab, today, state.newFirst, filter) {
-        buildRows(tab, state.tasks.filter { TagOps.matches(it, filter) }, today, state.newFirst)
+    val selecting = state.overdueSelection != null
+    val query = state.searchQuery.trim()
+    val searching = query.isNotEmpty()
+    val matches = remember(state.tasks, state.tags, query, searchOrder) {
+        if (searching) searchOrder.orderMatches(TaskSearch.find(state.tasks, state.tags, query)) else emptyList()
     }
-    val showSort = tab == Tab.Today && filterTasks(state.tasks, tab, today).size > 1
+    val rows = remember(state.tasks, tab, today, state.newFirst, filter, searching, matches) {
+        if (searching) {
+            val (done, active) = matches.partition { it.done }
+            groupedRows(listOf("Активные" to active, "Сделано" to done))
+        } else {
+            buildRows(tab, state.tasks.filter { TagOps.matches(it, filter) }, today, state.newFirst)
+        }
+    }
     val listState = rememberLazyListState()
+    LaunchedEffect(query, searchOrder) { listState.scrollToItem(0) }
     val side = if (compact) 14.dp else 24.dp
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -596,13 +644,28 @@ private fun TaskList(state: AppState, tab: Tab, today: LocalDate, compact: Boole
             contentPadding = PaddingValues(start = side, end = if (compact) 18.dp else 30.dp, top = 10.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item(key = "filter") {
-                TagFilterBar(state, Modifier.animateItem().entrance(440)) {
-                    if (showSort) SortToggle(state.newFirst, state::toggleSort)
+            if (searching) {
+                item(key = "search-summary") {
+                    Text("Поиск во всех задачах · ${matches.size}", Modifier.padding(start = 3.dp, top = 2.dp), color = Palette.Mute, fontSize = 13.sp)
+                }
+            } else if (!selecting && (state.tags.isNotEmpty() || availableOverdue.isNotEmpty())) {
+                item(key = "filter") {
+                    TagFilterBar(state, Modifier.animateItem().entrance(440)) {
+                        if (availableOverdue.isNotEmpty()) {
+                            GhostChip(if (compact) "Разгрести просрочку" else "Разгрести просроченное", small = true) { state.beginOverdueSelection() }
+                        }
+                    }
                 }
             }
             if (rows.isEmpty()) {
-                if (filter.isNotEmpty() && filterTasks(state.tasks, tab, today).isNotEmpty()) {
+                if (searching) {
+                    item(key = "empty_search") {
+                        Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Ничего не нашлось", fontFamily = Display, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Text("Попробуй другие слова или #тег", Modifier.padding(top = 6.dp), color = Palette.Mute, fontSize = 14.sp)
+                        }
+                    }
+                } else if (filter.isNotEmpty() && filterTasks(state.tasks, tab, today).isNotEmpty()) {
                     item(key = "empty_filter") { FilteredEmpty(state, Modifier.animateItem()) }
                 } else {
                     item(key = "empty_$tab") { Empty(tab, Modifier.animateItem()) }
@@ -612,21 +675,16 @@ private fun TaskList(state: AppState, tab: Tab, today: LocalDate, compact: Boole
                 when (row) {
                     is Row.Header -> stickyHeader(key = row.key) { SectionHeader(row.label, row.count, Modifier.entrance(460 + i * 55)) }
                     is Row.Item -> item(key = row.key) {
-                        TaskCard(row.task, today, tab, state, compact, Modifier.animateItem(fadeInSpec = tween(220), fadeOutSpec = tween(160)).entrance(460 + i * 55))
+                        val animation = Modifier.animateItem(fadeInSpec = tween(220), fadeOutSpec = tween(160))
+                        TaskCard(
+                            row.task, today, state, compact, row.task.id in availableOverdue,
+                            if (searching) animation else animation.entrance(460 + i * 55),
+                        )
                     }
                 }
             }
         }
         VerticalScrollbar(rememberScrollbarAdapter(listState), Modifier.align(Alignment.CenterEnd).fillMaxHeight().padding(vertical = 8.dp, horizontal = 5.dp))
-    }
-}
-
-@Composable
-private fun SortToggle(newFirst: Boolean, onClick: () -> Unit) {
-    val rot by animateFloatAsState(if (newFirst) 0f else 180f, Motion.bouncy(), label = "sortRot")
-    BrutalButton(onClick, radius = 50.dp, shadow = 2.dp, border = 2.dp, contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp)) {
-        Text("↓", fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.graphicsLayer { rotationZ = rot })
-        Text(if (newFirst) "Сначала новые" else "Сначала старые", fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, softWrap = false)
     }
 }
 
@@ -658,29 +716,58 @@ private fun SectionHeader(label: String, count: Int, modifier: Modifier) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
-private fun TaskCard(task: Task, today: LocalDate, tab: Tab, state: AppState, compact: Boolean, modifier: Modifier) {
+private fun TaskCard(task: Task, today: LocalDate, state: AppState, compact: Boolean, overdue: Boolean, modifier: Modifier) {
     val src = remember { MutableInteractionSource() }
     val hovered by src.collectIsHoveredAsState()
     val done = task.done
+    val selection = state.overdueSelection
+    val selecting = selection != null
+    val selected = overdue && selection?.contains(task.id) == true
     val strike = remember { Animatable(if (done) 1f else 0f) }
     LaunchedEffect(done) { strike.animateTo(if (done) 1f else 0f, tween(if (done) 320 else 180)) }
-    val bg by animateColorAsState(if (done) Palette.CardDone else Palette.Card, tween(200), label = "cardBg")
-    val lift by animateFloatAsState(if (hovered && !done) 1f else 0f, Motion.snappy(), label = "lift")
+    val bg by animateColorAsState(
+        when {
+            selected -> androidx.compose.ui.graphics.lerp(Palette.Card, Palette.Hay, if (Palette.IsDark) 0.15f else 0.28f)
+            done -> Palette.CardDone
+            else -> Palette.Card
+        }, tween(200), label = "cardBg",
+    )
+    val lift by animateFloatAsState(if (hovered && !done && (!selecting || overdue)) 1f else 0f, Motion.snappy(), label = "lift")
+    val stroke by animateColorAsState(when {
+        selected -> Palette.Hay
+        task.hot && !done -> Palette.Red
+        else -> Palette.Ink
+    }, tween(190), label = "cardBorder")
+    val interaction = when {
+        !selecting -> Modifier.combinedClickable(
+            interactionSource = src, indication = null,
+            onLongClickLabel = if (overdue) "Выделить просроченную задачу" else null,
+            onLongClick = if (overdue) ({ state.beginOverdueSelection(task.id) }) else null,
+            onClick = { state.editing = task },
+        ).hand()
+        overdue -> Modifier.toggleable(value = selected, interactionSource = src, indication = null, role = Role.Checkbox) {
+            state.toggleOverdueSelection(task.id)
+        }.hand()
+        else -> Modifier
+    }
 
     Column(
         modifier
             .fillMaxWidth()
             .hoverable(src)
             .graphicsLayer { translationX = -2.dp.toPx() * lift; translationY = -2.dp.toPx() * lift }
-            .brutal(bg, radius = 16.dp, shadow = if (done) 0.dp else 4.dp + 2.dp * lift, borderColor = if (task.hot && !done) Palette.Red else Palette.Ink)
-            .clickable(src, null) { state.editing = task }
-            .hand()
+            .brutal(bg, radius = 16.dp, shadow = if (done) 0.dp else 4.dp + 2.dp * lift, borderColor = stroke)
+            .then(interaction)
             .padding(start = 18.dp, end = 14.dp, top = 16.dp, bottom = 18.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            CheckBox(done) { state.toggle(task.id) }
+            when {
+                !selecting -> CheckBox(done) { state.toggle(task.id) }
+                overdue -> SelectionMark(selected)
+                else -> Spacer(Modifier.width(32.dp))
+            }
             Column(Modifier.weight(1f)) {
                 StrikeText(task.title, strike.value, done)
                 if (task.desc.isNotBlank()) {
@@ -700,18 +787,34 @@ private fun TaskCard(task: Task, today: LocalDate, tab: Tab, state: AppState, co
                     TagOps.of(task, state.tags).forEach { TagBadge(it) }
                 }
             }
-            if (!compact) CardActions(task, tab, state, hovered)
+            if (!selecting && !compact) CardActions(task, state, hovered)
         }
-        if (compact) Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.CenterEnd) { CardActions(task, tab, state, true) }
+        if (!selecting && compact) Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.CenterEnd) { CardActions(task, state, true) }
+    }
+}
+
+@Composable
+private fun SelectionMark(selected: Boolean) {
+    val fill by animateColorAsState(if (selected) Palette.Hay else Palette.Paper, tween(170), label = "selectionFill")
+    val border by animateColorAsState(if (selected) Palette.Hay else Palette.Mute, tween(170), label = "selectionBorder")
+    val stroke by animateFloatAsState(if (selected) 1f else 0f, tween(190), label = "selectionCheck")
+    val scale by animateFloatAsState(if (selected) 1.06f else 1f, Motion.bouncy(), label = "selectionScale")
+    Box(
+        Modifier.size(32.dp).graphicsLayer { scaleX = scale; scaleY = scale }
+            .brutal(fill, radius = 9.dp, shadow = 0.dp, borderColor = border),
+        contentAlignment = Alignment.Center,
+    ) {
+        val ink = Palette.OnHay
+        Canvas(Modifier.size(21.dp)) { if (stroke > 0f) check(ink, 3.4.dp.toPx(), stroke) }
     }
 }
 
 /** «Завтра» и «нахер» проявляются под мышкой, чтобы список оставался спокойным. */
 @Composable
-private fun CardActions(task: Task, tab: Tab, state: AppState, hovered: Boolean) {
+private fun CardActions(task: Task, state: AppState, hovered: Boolean) {
     val a by animateFloatAsState(if (hovered) 1f else 0.45f, tween(150), label = "actions")
     Row(Modifier.graphicsLayer { alpha = a }, horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (tab != Tab.Done) CardAction("завтра", { later(it, 1.8.dp.toPx()) }) { state.postpone(task.id) }
+        if (!task.done) CardAction("завтра", { later(it, 1.8.dp.toPx()) }) { state.postpone(task.id) }
         CardAction("нахер", { trash(it, 1.8.dp.toPx()) }, danger = true) { state.delete(task.id) }
     }
 }
@@ -761,7 +864,8 @@ private fun CheckBox(done: Boolean, onClick: () -> Unit) {
             .size(32.dp)
             .graphicsLayer { scaleX = bounce.value; scaleY = bounce.value }
             .brutal(bg, radius = 9.dp, shadow = 0.dp)
-            .clickable(src, null, onClick = onClick)
+            .toggleable(value = done, interactionSource = src, indication = null, role = Role.Checkbox) { onClick() }
+            .semantics { contentDescription = if (done) "Вернуть в активные" else "Отметить выполненной" }
             .hand(),
         contentAlignment = Alignment.Center,
     ) {

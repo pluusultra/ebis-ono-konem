@@ -237,6 +237,12 @@ fun AppRoot(vm: TasksViewModel = viewModel()) {
                         if (action == OverdueAction.Complete && Notifier.checkAllDone(ctx) != null) streakTick++
                     }
                 },
+                onMoveOverdue = { ids, due ->
+                    withUndo("Перенесено на " + Copy.shortDate(due)) {
+                        TaskRepo.rescheduleOverdue(ids, due)
+                        ids.forEach { Notifier.cancelForTask(ctx, it) }
+                    }
+                },
             )
         }
 

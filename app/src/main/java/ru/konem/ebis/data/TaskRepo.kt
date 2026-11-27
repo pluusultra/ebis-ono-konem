@@ -107,6 +107,9 @@ object TaskRepo {
     fun batch(ids: Set<Long>, action: OverdueAction, tags: Set<Long> = emptySet()) =
         update(TaskOps.applyToOverdue(tasks, ids, action, tags.intersect(this.tags.map { it.id }.toSet())))
 
+    fun rescheduleOverdue(ids: Set<Long>, due: LocalDate) =
+        update(TaskOps.rescheduleOverdue(tasks, ids, due, LocalDate.now()))
+
     /** Возвращает новое состояние: true — задача теперь сделана. */
     fun toggle(id: Long, sync: Boolean = false): Boolean {
         val (next, done) = TaskOps.toggle(tasks, id)

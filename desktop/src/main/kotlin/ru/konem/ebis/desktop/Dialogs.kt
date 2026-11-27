@@ -108,11 +108,15 @@ private fun Modifier.placeIf(show: Boolean) = layout { m, c ->
 private val dateFmt = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 
 /** «17.10», «17.10.2026», «17.10.26» → дата; ерунда → null. */
-private fun parseDate(s: String, today: LocalDate): LocalDate? {
-    val parts = s.trim().split('.', '/', '-').filter { it.isNotBlank() }
+internal fun parseDate(s: String, today: LocalDate): LocalDate? {
+    val parts = s.trim().split('.', '/', '-')
+    if (parts.size !in 2..3) return null
     val d = parts.getOrNull(0)?.toIntOrNull() ?: return null
     val m = parts.getOrNull(1)?.toIntOrNull() ?: return null
-    val y = parts.getOrNull(2)?.toIntOrNull()?.let { if (it < 100) 2000 + it else it } ?: today.year
+    val y = if (parts.size == 3) {
+        val year = parts[2].toIntOrNull() ?: return null
+        if (year < 100) 2000 + year else year
+    } else today.year
     return runCatching { LocalDate.of(y, m, d) }.getOrNull()
 }
 

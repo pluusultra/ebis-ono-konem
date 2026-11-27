@@ -81,6 +81,9 @@ object TaskOps {
 
     fun delete(tasks: List<Task>, id: Long) = tasks.filterNot { it.id == id }
 
+    fun rescheduleOverdue(tasks: List<Task>, ids: Set<Long>, due: LocalDate, today: LocalDate): List<Task> =
+        tasks.map { if (it.id in ids && !it.done && it.due.isBefore(today)) it.copy(due = due) else it }
+
     fun applyToOverdue(
         tasks: List<Task>, ids: Set<Long>, action: OverdueAction,
         tagIds: Set<Long> = emptySet(), today: LocalDate = LocalDate.now(),
@@ -88,7 +91,7 @@ object TaskOps {
         val selected = DaySnapshot(tasks, today).overdue.filter { it.id in ids }.map { it.id }.toSet()
         if (selected.isEmpty()) return tasks
         return when (action) {
-            OverdueAction.Tomorrow -> tasks.map { if (it.id in selected) it.copy(due = today.plusDays(1)) else it }
+            OverdueAction.Tomorrow -> rescheduleOverdue(tasks, selected, today.plusDays(1), today)
             OverdueAction.Complete -> selected.fold(tasks) { current, id -> setDone(current, id, today) }
             OverdueAction.AddTags -> tasks.map { if (it.id in selected) it.copy(tagIds = it.tagIds + tagIds) else it }
             OverdueAction.RemoveTags -> tasks.map { if (it.id in selected) it.copy(tagIds = it.tagIds - tagIds) else it }

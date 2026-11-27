@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
@@ -38,6 +39,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
@@ -57,14 +60,30 @@ import ru.konem.ebis.ui.theme.Palette
 private fun tagBg(color: Int) = Color(color)
 private fun tagFg(color: Int) = if (TagColors.isLight(color)) Color(0xFF111111) else Color.White
 
+@Composable
+private fun tagLabelBackground(color: Int): Color = remember(color) {
+    val background = tagBg(color)
+    if (!TagColors.isLight(color)) {
+        background
+    } else {
+        var light = 0f
+        var dark = 1f
+        repeat(8) {
+            val blend = (light + dark) / 2f
+            if (TagColors.isLight(lerp(background, Color.Black, blend).toArgb())) light = blend else dark = blend
+        }
+        lerp(background, Color.Black, dark)
+    }
+}
+
 /** Плашка тега на карточке задачи. */
 @Composable
 fun TagBadge(tag: Tag) {
     Text(
-        "# " + tag.name, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = tagFg(tag.color),
+        "# " + tag.name, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.White,
         maxLines = 1, overflow = TextOverflow.Ellipsis,
         modifier = Modifier
-            .background(tagBg(tag.color), RoundedCornerShape(6.dp))
+            .background(tagLabelBackground(tag.color), RoundedCornerShape(6.dp))
             .border(2.dp, Palette.Ink, RoundedCornerShape(6.dp))
             .padding(horizontal = 7.dp, vertical = 2.dp),
     )
@@ -72,24 +91,26 @@ fun TagBadge(tag: Tag) {
 
 /** Таблетка тега для выбора: своим цветом, если выбрана; иначе карточка с цветной точкой. */
 @Composable
-fun TagChip(tag: Tag, selected: Boolean, small: Boolean = false, onClick: () -> Unit) {
+fun TagChip(tag: Tag, selected: Boolean, small: Boolean = false, alwaysColored: Boolean = false, onClick: () -> Unit) {
     val shape = RoundedCornerShape(50)
     val src = remember { MutableInteractionSource() }
-    val bg by animateColorAsState(if (selected) tagBg(tag.color) else Palette.Card, Motion.fade(), label = "tagBg")
+    val bg = if (alwaysColored) tagLabelBackground(tag.color)
+    else animateColorAsState(if (selected) tagBg(tag.color) else Palette.Card, Motion.fade(), label = "tagBg").value
     Row(
         Modifier
             .pressScale(src, 0.93f)
             .background(bg, shape)
             .border(2.5.dp, Palette.Ink, shape)
-            .clickable(src, null, onClick = onClick)
+            .toggleable(selected, src, indication = null) { onClick() }
             .padding(horizontal = if (small) 11.dp else 13.dp, vertical = if (small) 5.dp else 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (!selected) Box(Modifier.size(9.dp).background(tagBg(tag.color), CircleShape).border(1.5.dp, Palette.Ink, CircleShape))
+        if (alwaysColored && selected) Text("✓", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        if (!alwaysColored && !selected) Box(Modifier.size(9.dp).background(tagBg(tag.color), CircleShape).border(1.5.dp, Palette.Ink, CircleShape))
         Text(
             tag.name, fontWeight = FontWeight.Bold, fontSize = if (small) 12.5.sp else 13.5.sp,
-            color = if (selected) tagFg(tag.color) else Palette.Ink, maxLines = 1,
+            color = if (alwaysColored) Color.White else if (selected) tagFg(tag.color) else Palette.Ink, maxLines = 1,
         )
     }
 }
@@ -256,12 +277,11 @@ fun TagPicker(selected: Set<Long>, onChange: (Set<Long>) -> Unit) {
     }
 }
 
-/** Полоска фильтра по тегам. Справа к ней пристраивается [trailing] — сортировка. */
+/** Полоска фильтра по тегам; справа [trailing] показывает действие с просроченными. */
 @Composable
 fun TagFilterBar(
     filter: Set<Long>,
     onFilter: (Set<Long>) -> Unit,
-    onManage: () -> Unit,
     modifier: Modifier = Modifier,
     trailing: @Composable () -> Unit,
 ) {
@@ -275,10 +295,9 @@ fun TagFilterBar(
             if (tags.isNotEmpty()) {
                 GhostChip("Все", selected = filter.isEmpty(), small = true) { onFilter(emptySet()) }
                 tags.forEach { t ->
-                    TagChip(t, t.id in filter, small = true) { onFilter(if (t.id in filter) filter - t.id else filter + t.id) }
+                    TagChip(t, t.id in filter, small = true, alwaysColored = true) { onFilter(if (t.id in filter) filter - t.id else filter + t.id) }
                 }
             }
-            GhostChip(if (tags.isEmpty()) "🏷 Теги" else "⚙", small = true, onClick = onManage)
         }
         trailing()
     }

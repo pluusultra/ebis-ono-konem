@@ -123,6 +123,19 @@ class TaskWorkflowTest {
     }
 
     @Test
+    fun customBatchDateOnlyMovesSelectedActiveOverdueTasks() {
+        val selected = task.copy(repeat = Repeat.Daily, checklist = listOf(ChecklistItem("Проверить", true)))
+        val completed = task.copy(id = 2, done = true)
+        val unselected = task.copy(id = 3)
+        val future = task.copy(id = 4, due = today.plusDays(1))
+        val destination = today.plusDays(5)
+        val first = listOf(selected, completed, unselected, future)
+        val moved = TaskOps.rescheduleOverdue(first, setOf(1, 2, 4), destination, today)
+        assertEquals(listOf(selected.copy(due = destination), completed, unselected, future), moved)
+        assertEquals(first, TaskOps.undo(moved, first, moved))
+    }
+
+    @Test
     fun trashSurvivesSyncAndRestoresOriginalIdsAndTagLinks() {
         val tagged = task.copy(tagIds = setOf(home.id))
         val initial = TaskData(listOf(tagged), tags = listOf(home))

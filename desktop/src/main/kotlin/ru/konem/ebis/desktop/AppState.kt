@@ -22,6 +22,8 @@ enum class Tab(val icon: String, val title: String) { Today("🔥", "Сегод�
 /** Тост внизу окна; [undo] — кнопка «Верни». */
 class Toast(val text: String, val undo: (() -> Unit)? = null, val id: Long = System.nanoTime())
 
+internal enum class SearchFocusRequest { Focus, Clear }
+
 /** Всё состояние окна. Меняется только с UI-потока (в Compose Desktop это Swing EDT). */
 class AppState(val store: DesktopStore) {
     var data by mutableStateOf(TaskData(emptyList()))
@@ -29,13 +31,56 @@ class AppState(val store: DesktopStore) {
     val tasks get() = data.tasks
 
     var tab by mutableStateOf(Tab.Today)
+        private set
+    var searchQuery by mutableStateOf("")
+    internal var searchFocusRequest by mutableStateOf<SearchFocusRequest?>(null)
+    internal var searchFocused by mutableStateOf(false)
     var newFirst by mutableStateOf(store.todayNewFirst)
         private set
     var theme by mutableStateOf(store.theme)
         private set
     var toast by mutableStateOf<Toast?>(null)
     var editing by mutableStateOf<Task?>(null)
-    var tools by mutableStateOf<TaskTool?>(null)
+    var trashOpen by mutableStateOf(false)
+    var overdueSelection by mutableStateOf<Set<Long>?>(null)
+        private set
+
+    fun selectTab(tab: Tab) {
+        endOverdueSelection()
+        searchQuery = ""
+        this.tab = tab
+    }
+
+    fun focusSearch() {
+        endOverdueSelection()
+        searchFocusRequest = SearchFocusRequest.Focus
+    }
+
+    fun dismissSearch(): Boolean {
+        if (searchQuery.isEmpty() && !searchFocused && searchFocusRequest != SearchFocusRequest.Focus) return false
+        searchQuery = ""
+        searchFocusRequest = SearchFocusRequest.Clear
+        return true
+    }
+
+    fun beginOverdueSelection(first: Long? = null) {
+        searchFocusRequest = null
+        overdueSelection = if (first == null) emptySet() else setOf(first)
+    }
+
+    fun toggleOverdueSelection(id: Long) {
+        val selected = overdueSelection ?: return
+        overdueSelection = if (id in selected) selected - id else selected + id
+    }
+
+    fun toggleAllOverdue(available: Set<Long>) {
+        val selected = overdueSelection ?: return
+        overdueSelection = if (selected.containsAll(available)) emptySet() else available
+    }
+
+    fun endOverdueSelection() {
+        overdueSelection = null
+    }
 
     /** Будильник «Горит», который сейчас орёт (своё окно поверх всех). */
     var alarm by mutableStateOf<AlarmRing?>(null)
@@ -223,9 +268,15 @@ class AppState(val store: DesktopStore) {
             .onFailure { show("Не удалось восстановить копию") }
     }
 
-    fun batch(ids: Set<Long>, action: OverdueAction, tags: Set<Long> = emptySet()) {
+    fun batchOverdue(ids: Set<Long>, action: OverdueAction, today: LocalDate, tags: Set<Long> = emptySet()) {
         val validTags = tags.intersect(this.tags.map { it.id }.toSet())
-        withUndo("Изменения применены", TaskOps.applyToOverdue(tasks, ids, action, validTags))
+        withUndo("Изменения применены", TaskOps.applyToOverdue(tasks, ids, action, validTags, today))
+        endOverdueSelection()
+    }
+
+    fun moveOverdue(ids: Set<Long>, due: LocalDate, today: LocalDate) {
+        withUndo("Перенесено на " + Copy.shortDate(due), TaskOps.rescheduleOverdue(tasks, ids, due, today))
+        endOverdueSelection()
     }
 
     fun toggle(id: Long) {
@@ -262,13 +313,13 @@ class AppState(val store: DesktopStore) {
 
     /** Полная форма новой задачи: то же окно правки, но с пустым черновиком. */
     fun newTask() {
-        tools = null
+        trashOpen = false
         settingsOpen = false
         if (editing?.id != DRAFT_ID) editing = Task(id = DRAFT_ID, title = "", desc = "", due = LocalDate.now())
     }
 
     fun openSettings(pane: SettingsPane? = null) {
-        tools = null
+        trashOpen = false
         pane?.let { settingsPane = it }
         settingsOpen = true
     }
@@ -280,7 +331,6 @@ class AppState(val store: DesktopStore) {
     }
 }
 
-enum class TaskTool { Search, Overdue, Trash }
 
 private fun androidx.compose.ui.graphics.Color.hex() = "#%02X%02X%02X".format((red * 255).toInt(), (green * 255).toInt(), (blue * 255).toInt())
 

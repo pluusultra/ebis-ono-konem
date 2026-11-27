@@ -369,7 +369,7 @@ fun main(args: Array<String>) {
 }
 
 /** Горячие клавиши окна. Сначала — режим «жми новое сочетание» из настроек. */
-private fun onKey(e: KeyEvent, state: AppState, hide: () -> Unit): Boolean {
+internal fun onKey(e: KeyEvent, state: AppState, hide: () -> Unit): Boolean {
     if (e.type != KeyEventType.KeyDown) return false
     state.capturing?.let { a ->
         if (e.key == Key.Escape) {
@@ -388,25 +388,26 @@ private fun onKey(e: KeyEvent, state: AppState, hide: () -> Unit): Boolean {
     }
     if (e.key == Key.Escape) {
         return when {
-            state.tools != null -> { state.tools = null; true }
+            state.trashOpen -> { state.trashOpen = false; true }
             state.editing != null -> { state.editing = null; true }
             state.settingsOpen -> { state.settingsOpen = false; true }
-            else -> false
+            state.overdueSelection != null -> { state.endOverdueSelection(); true }
+            else -> state.dismissSearch()
         }
     }
     val c = Keymap.combo(e) ?: return false
     when (state.keys.find(c)) {
         Action.Quick -> state.newTask()
-        Action.Today -> state.tab = Tab.Today
-        Action.All -> state.tab = Tab.All
-        Action.Done -> state.tab = Tab.Done
+        Action.Today -> state.selectTab(Tab.Today)
+        Action.All -> state.selectTab(Tab.All)
+        Action.Done -> state.selectTab(Tab.Done)
         Action.Settings -> if (state.settingsOpen) state.settingsOpen = false else state.openSettings()
         Action.Theme -> state.chooseTheme(if (Palette.IsDark) ThemeMode.Light else ThemeMode.Dark)
         Action.Save -> if (state.editing != null) state.saveRequests++ else return false
         Action.Hide -> hide()
         Action.Search -> {
-            if (state.editing != null || state.settingsOpen) return false
-            state.tools = if (state.tools == TaskTool.Search) null else TaskTool.Search
+            if (state.editing != null || state.settingsOpen || state.trashOpen) return false
+            state.focusSearch()
         }
         null -> return false
     }

@@ -106,6 +106,13 @@ enum class BodyFont(val label: String, val hint: String) {
     Montserrat("Montserrat", "Широкий, жирный"), Nunito("Nunito", "Мягкий, округлый"),
 }
 
+enum class HorseMascot(val label: String, val image: String) {
+    Sleepy("Сонный", "mascots/sleepy.png"),
+    Heckler("Хохмач", "mascots/heckler.png"),
+    Wiseguy("Ехидный", "mascots/wiseguy.png"),
+    Snicker("Ухмылка", "mascots/snicker.png"),
+}
+
 data class Look(
     /**
      * Свой фон отдельно для дня и для ночи; null — фон темы. Раньше фон был один и перебивал тему целиком:
@@ -120,6 +127,7 @@ data class Look(
     val font: BodyFont = BodyFont.Onest,
     /** Масштаб интерфейса; 0 — «Авто», по размеру экрана (см. [UiScale]). */
     val scale: Float = 0f,
+    val mascot: HorseMascot = HorseMascot.Sleepy,
 ) {
     fun bg(dark: Boolean): Color? = if (dark) bgDark else bgLight
 
@@ -167,6 +175,7 @@ class LookStore(private val p: Preferences) {
             // До «Авто» масштаб сохранялся всегда, даже нетронутый: 100% без отметки нового формата считаем «Авто».
             scale = if (p.get("look.scaleAuto", null) != null) p.getFloat("look.scale", 0f)
             else p.getFloat("look.scale", 0f).takeIf { it != 1f } ?: 0f,
+            mascot = e("look.mascot", d.mascot, HorseMascot.entries.toTypedArray()),
         )
     }
 
@@ -179,6 +188,7 @@ class LookStore(private val p: Preferences) {
         p.put("look.strength", l.strength.name)
         p.put("look.head", l.head.toArgb().toLong().toString())
         p.put("look.font", l.font.name)
+        p.put("look.mascot", l.mascot.name)
         p.putFloat("look.scale", l.scale)
         p.put("look.scaleAuto", "1")
         runCatching { p.flush() }

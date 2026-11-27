@@ -2,6 +2,7 @@
 
 package ru.konem.ebis.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -11,7 +12,6 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -32,6 +32,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.draggable
@@ -51,6 +53,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -83,10 +86,16 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
@@ -113,7 +122,6 @@ import ru.konem.ebis.ui.theme.Palette
 import java.time.LocalDate
 import kotlin.math.abs
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 /** Горящие наверху, дальше — ручной порядок (новые задачи получают больший order). */
 private fun byHotThenOrder(newFirst: Boolean) = compareByDescending<Task> { it.hot }
@@ -140,8 +148,6 @@ private sealed interface ListRow {
 
 private fun buildRows(tab: Tab, tasks: List<Task>, today: LocalDate, newFirst: Boolean): List<ListRow> {
     val list = filterTasks(tasks, tab, today, newFirst)
-    fun grouped(groups: List<Pair<String, List<Task>>>) = groups.filter { it.second.isNotEmpty() }
-        .flatMap { (label, ts) -> listOf(ListRow.Header(label, ts.size)) + ts.map { ListRow.Item(it) } }
 
     return when (tab) {
         Tab.Today -> list.map { ListRow.Item(it) }
@@ -171,6 +177,9 @@ private fun buildRows(tab: Tab, tasks: List<Task>, today: LocalDate, newFirst: B
     }
 }
 
+private fun grouped(groups: List<Pair<String, List<Task>>>) = groups.filter { it.second.isNotEmpty() }
+    .flatMap { (label, ts) -> listOf(ListRow.Header(label, ts.size)) + ts.map { ListRow.Item(it) } }
+
 class TrackerActions(
     val onToggle: (Long) -> Unit,
     val onPostpone: (Long) -> Unit,
@@ -196,22 +205,48 @@ fun TrackerScreen(
     tagFilter: Set<Long> = emptySet(),
     onTagFilter: (Set<Long>) -> Unit = {},
     onBatch: (Set<Long>, OverdueAction, Set<Long>) -> Unit = { _, _, _ -> },
+    onMoveOverdue: (Set<Long>, LocalDate) -> Unit = { _, _ -> },
 ) {
     val today = LocalDate.now()
     val counts = Tab.entries.associateWith { filterTasks(tasks, it, today).size }
-    var searching by rememberSaveable { mutableStateOf(false) }
-    var managingOverdue by rememberSaveable { mutableStateOf(false) }
-    if (searching) {
-        TaskSearchDialog(tasks, TaskRepo.tags, onEdit = {
-            searching = false
-            actions.onEdit(it)
-        }, onClose = { searching = false })
+    val tags = TaskRepo.tags
+    var query by rememberSaveable(tab) { mutableStateOf("") }
+    var searchOrder by rememberSaveable { mutableStateOf(TaskListOrder.Due) }
+    var searchFocused by remember { mutableStateOf(false) }
+    var selectionIds by rememberSaveable(tab) { mutableStateOf<LongArray?>(null) }
+    val selection = selectionIds?.toSet()
+    val searching = query.isNotBlank()
+    val selecting = selection != null
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    fun dismissInput() {
+        focus.clearFocus()
+        keyboard?.hide()
     }
-    if (managingOverdue) {
-        OverdueDialog(tasks, TaskRepo.tags, onClose = { managingOverdue = false }) { ids, action, selectedTags ->
-            onBatch(ids, action, selectedTags)
-            managingOverdue = false
-        }
+    fun closeSearch() {
+        query = ""
+        dismissInput()
+    }
+    fun closeSelection() {
+        selectionIds = null
+        dismissInput()
+    }
+    BackHandler(enabled = selecting || query.isNotEmpty() || searchFocused) {
+        if (selecting) closeSelection() else closeSearch()
+    }
+    val matches = remember(tasks, tags, query, searchOrder) {
+        searchOrder.sortMatches(TaskSearch.find(tasks, tags, query))
+    }
+    val overdue = remember(tasks, tab, today, tagFilter, searching) {
+        if (tab == Tab.Done || searching) emptySet()
+        else tasks.filter { !it.done && it.due.isBefore(today) && TagOps.matches(it, tagFilter) }.map { it.id }.toSet()
+    }
+    val selected = selection.orEmpty().intersect(overdue)
+    val tabOrder = if (newFirst) TaskListOrder.Newest else TaskListOrder.Oldest
+    val orders = when {
+        searching -> TaskListOrder.entries
+        tab == Tab.Today -> listOf(TaskListOrder.Newest, TaskListOrder.Oldest)
+        else -> emptyList()
     }
 
     // Шапка падает сверху с пружинкой после появления экрана.
@@ -227,7 +262,7 @@ fun TrackerScreen(
         intro = false
     }
 
-    Box(Modifier.fillMaxSize().background(Palette.Paper)) {
+    Box(Modifier.fillMaxSize().background(Palette.Paper).then(if (searchFocused || selecting) Modifier.imePadding() else Modifier)) {
         Column(Modifier.fillMaxSize()) {
             Header(
                 subtitle = Copy.subtitle(counts.getValue(Tab.Today)),
@@ -237,14 +272,46 @@ fun TrackerScreen(
                     .zIndex(1f)
                     .graphicsLayer { translationY = drop.value * size.height },
             )
-            Tabs(tab, onTab, counts)
-            Row(
-                Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                GhostChip("Поиск") { searching = true }
-                if (tasks.any { !it.done && it.due.isBefore(today) }) {
-                    GhostChip("Разгрести просроченное") { managingOverdue = true }
+            Tabs(if (searching) null else tab, { target ->
+                closeSearch()
+                selectionIds = null
+                onTab(target)
+            }, counts)
+            AnimatedContent(
+                selecting,
+                modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 14.dp, top = 8.dp),
+                transitionSpec = {
+                    (fadeIn(tween(200)) + slideInVertically(tween(200)) { -it / 4 }) togetherWith fadeOut(tween(110))
+                },
+                label = "taskControls",
+            ) { showSelection ->
+                if (showSelection) {
+                    OverdueSelectionBar(
+                        selected, overdue, tags, today,
+                        onCancel = ::closeSelection,
+                        onToggleAll = {
+                            if (selectionIds != null) selectionIds = if (selected == overdue) LongArray(0) else overdue.toLongArray()
+                        },
+                        onMove = { due ->
+                            if (selected.isNotEmpty()) {
+                                onMoveOverdue(selected, due)
+                                closeSelection()
+                            }
+                        },
+                        onApply = { action, tagIds ->
+                            if (selected.isNotEmpty()) {
+                                onBatch(selected, action, tagIds)
+                                closeSelection()
+                            }
+                        },
+                    )
+                } else {
+                    TaskListControls(
+                        query, { query = it }, { searchFocused = it }, ::closeSearch, ::dismissInput,
+                        orders, if (searching) searchOrder else tabOrder,
+                        onOrder = { if (searching) searchOrder = it else if (it != tabOrder) onToggleSort() },
+                        enabled = !selecting,
+                    )
                 }
             }
             AnimatedVisibility(
@@ -265,7 +332,24 @@ fun TrackerScreen(
                 },
                 label = "tabPage",
             ) { t ->
-                TaskPage(t, tasks, today, intro, actions, streak, bestStreak, newFirst, onToggleSort, tagFilter, onTagFilter, onSettings)
+                TaskPage(
+                    t, tasks, today, intro, actions, streak, bestStreak, newFirst, tagFilter, onTagFilter,
+                    searchMatches = if (searching) matches else null,
+                    query = query.trim(),
+                    searchOrder = searchOrder,
+                    overdue = overdue,
+                    selection = if (selecting) selected else null,
+                    onStartSelection = { id ->
+                        dismissInput()
+                        selectionIds = if (id == null) LongArray(0) else longArrayOf(id)
+                    },
+                    onSelect = { id ->
+                        selectionIds?.let { current ->
+                            val ids = current.toSet().intersect(overdue)
+                            selectionIds = (if (id in ids) ids - id else ids + id).toLongArray()
+                        }
+                    },
+                )
             }
         }
 
@@ -275,7 +359,7 @@ fun TrackerScreen(
             delay(450)
             fab.animateTo(1f, Motion.bouncy())
         }
-        BrutalButton(
+        if (!selecting && !searchFocused) BrutalButton(
             onClick = onAdd,
             bg = Palette.Red,
             shadow = 4.dp,
@@ -307,18 +391,29 @@ private fun TaskPage(
     streak: Int,
     bestStreak: Int,
     newFirst: Boolean,
-    onToggleSort: () -> Unit,
     tagFilter: Set<Long>,
     onTagFilter: (Set<Long>) -> Unit,
-    onManageTags: () -> Unit,
+    searchMatches: List<Task>?,
+    query: String,
+    searchOrder: TaskListOrder,
+    overdue: Set<Long>,
+    selection: Set<Long>?,
+    onStartSelection: (Long?) -> Unit,
+    onSelect: (Long) -> Unit,
 ) {
-    val rows = remember(tasks, tab, today, newFirst, tagFilter) {
-        buildRows(tab, tasks.filter { TagOps.matches(it, tagFilter) }, today, newFirst)
+    val searching = searchMatches != null
+    val selecting = selection != null
+    val rows = remember(tasks, tab, today, newFirst, tagFilter, searchMatches) {
+        if (searchMatches != null) {
+            val (active, done) = searchMatches.partition { !it.done }
+            grouped(listOf("Активные" to active, "Сделано" to done))
+        } else buildRows(tab, tasks.filter { TagOps.matches(it, tagFilter) }, today, newFirst)
     }
     val tabTotal = remember(tasks, tab, today) { filterTasks(tasks, tab, today).size }
     val tags = TaskRepo.tags
     val nav = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val listState = rememberLazyListState()
+    LaunchedEffect(query, searchOrder) { listState.scrollToItem(0) }
     val haptic = LocalHapticFeedback.current
 
     // Перетаскивание (только «Сегодня»): пока тащим, показываем локальный порядок.
@@ -351,22 +446,31 @@ private fun TaskPage(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 110.dp + nav),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        if (tab == Tab.Done) {
+        if (tab == Tab.Done && !searching) {
             item(key = "stats") {
                 val doneToday = rows.filterIsInstance<ListRow.Item>().count { it.task.doneAt.toLocalDate() == today }
                 Stats(doneToday, streak, bestStreak, Modifier.animateItem(placementSpec = Motion.placement))
             }
         }
-        val showSort = tab == Tab.Today && tabTotal > 1
-        if (showSort || tags.isNotEmpty()) {
-            item(key = "sort") {
-                TagFilterBar(tagFilter, onTagFilter, onManageTags, Modifier.animateItem(placementSpec = Motion.placement)) {
-                    if (showSort) SortToggle(newFirst, onToggleSort)
+        if (searchMatches != null) {
+            item(key = "search-summary") {
+                Text("Поиск во всех задачах · " + searchMatches.size, color = Palette.Mute, fontSize = 12.sp)
+            }
+        } else if (!selecting && (tags.isNotEmpty() || overdue.isNotEmpty())) {
+            item(key = "filter") {
+                TagFilterBar(tagFilter, onTagFilter, Modifier.animateItem(placementSpec = Motion.placement)) {
+                    if (overdue.isNotEmpty()) {
+                        GhostChip("Разгрести просрочку", small = true) { onStartSelection(null) }
+                    }
                 }
             }
         }
         if (rows.isEmpty()) {
-            if (tagFilter.isNotEmpty() && tabTotal > 0) {
+            if (searching) {
+                item(key = "empty_search") {
+                    Text("Ничего не нашлось", Modifier.padding(vertical = 24.dp), color = Palette.Mute, fontSize = 15.sp)
+                }
+            } else if (tagFilter.isNotEmpty() && tabTotal > 0) {
                 item(key = "empty_filter") {
                     Column(
                         Modifier.fillMaxWidth().padding(vertical = 36.dp).animateItem(),
@@ -390,23 +494,31 @@ private fun TaskPage(
                 }
                 is ListRow.Item -> item(key = row.key, contentType = "task") {
                     val t = row.task
+                    val eligible = t.id in overdue
+                    val canReorder = tab == Tab.Today && !selecting && !searching
                     val isDragged = dragKey == t.id
                     val lift by animateFloatAsState(if (isDragged) 1f else 0f, Motion.snappy(), label = "lift")
                     TaskCard(
                         task = t,
                         today = today,
-                        tab = tab,
                         actions = actions,
                         lift = lift,
-                        dragModifier = if (tab != Tab.Today) Modifier else Modifier.pointerInput(t.id) {
+                        selecting = selecting,
+                        selected = selection?.contains(t.id) == true,
+                        onSelect = if (selecting && eligible) ({ onSelect(t.id) }) else null,
+                        onLongPress = if (!selecting && eligible && !canReorder) ({ onStartSelection(t.id) }) else null,
+                        keepInList = searching,
+                        dragModifier = if (!canReorder) Modifier else Modifier.pointerInput(t.id, rows, newFirst, eligible) {
                             detectDragGesturesAfterLongPress(
                                 onDragStart = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    dragOrder = rows
-                                    dragKey = t.id
                                     dragDy = 0f
                                 },
                                 onDrag = { change, amount ->
+                                    if (dragOrder == null) {
+                                        dragOrder = rows
+                                        dragKey = t.id
+                                    }
                                     change.consume()
                                     onDrag(amount.y)
                                 },
@@ -415,7 +527,7 @@ private fun TaskPage(
                                         // reorder ждёт порядок «сверху вниз = по возрастанию order».
                                         val ids = o.filterIsInstance<ListRow.Item>().map { it.task.id }
                                         actions.onReorder(if (newFirst) ids.reversed() else ids)
-                                    }
+                                    } ?: if (eligible) onStartSelection(t.id) else Unit
                                     dragOrder = null
                                     dragKey = null
                                     dragDy = 0f
@@ -435,7 +547,7 @@ private fun TaskPage(
                                 placementSpec = if (isDragged) null else Motion.placement,
                                 fadeOutSpec = tween(180),
                             )
-                            .stagger(i, intro),
+                            .stagger(i, intro && !searching),
                     )
                 }
             }
@@ -464,21 +576,12 @@ private fun Modifier.stagger(index: Int, enabled: Boolean): Modifier {
 private fun Header(subtitle: String, streak: Int, onSettings: () -> Unit, modifier: Modifier = Modifier) {
     HayBar(modifier, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(
-                Modifier.size(58.dp).brutal(Palette.HeaderBtn, radius = 16.dp, shadow = 3.dp, borderColor = Palette.OnHay, shadowColor = Palette.OnHay),
-                contentAlignment = Alignment.Center,
-            ) {
-                Image(painterResource(R.drawable.logo), null, Modifier.size(48.dp))
-            }
+            HeaderMascot()
             Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Ебись оно", fontFamily = Display, fontWeight = FontWeight.Black, fontSize = 23.sp,
-                        letterSpacing = (-0.5).sp, maxLines = 1, softWrap = false,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    HorseEmoji()
-                }
+                Text(
+                    "Ебись оно конём", fontFamily = Display, fontWeight = FontWeight.Black, fontSize = 20.sp,
+                    lineHeight = 23.sp, letterSpacing = (-0.5).sp, maxLines = 2,
+                )
                 Row(
                     Modifier.padding(top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -539,37 +642,8 @@ private fun SettingsButton(onClick: () -> Unit) {
     }
 }
 
-/**
- * 🐴 раз в 3.5 секунды дёргает головой. Паузу держит delay, а не бесконечная анимация: та гоняла кадры
- * 60–120 раз в секунду всё время, пока трекер на экране, хотя конь стоял неподвижно.
- */
 @Composable
-private fun HorseEmoji() {
-    val rot = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(2800)
-            rot.animateTo(0f, keyframes {
-                durationMillis = 700
-                -14f at 175
-                10f at 350
-                -6f at 525
-            })
-        }
-    }
-    Text(
-        "🐴",
-        fontSize = 32.sp,
-        lineHeight = 32.sp,
-        modifier = Modifier.graphicsLayer {
-            rotationZ = rot.value
-            transformOrigin = TransformOrigin(0.5f, 0.9f)
-        },
-    )
-}
-
-@Composable
-private fun Tabs(tab: Tab, onTab: (Tab) -> Unit, counts: Map<Tab, Int>) {
+private fun Tabs(tab: Tab?, onTab: (Tab) -> Unit, counts: Map<Tab, Int>) {
     val labels = mapOf(Tab.Today to "🔥 Сегодня", Tab.All to "📦 Вся херня", Tab.Done to "✅ Сделано")
     Row(
         Modifier
@@ -658,34 +732,6 @@ private fun Banner(text: String, onDismiss: () -> Unit) {
 
 /** Переключатель порядка во вкладке «Сегодня»: новые сверху / старые сверху. */
 @Composable
-private fun SortToggle(newFirst: Boolean, onClick: () -> Unit) {
-    val src = remember { MutableInteractionSource() }
-    val pressed by src.collectIsPressedAsState()
-    val p by animateFloatAsState(if (pressed) 1f else 0f, Motion.snappy(), label = "sortPress")
-    val rot by animateFloatAsState(if (newFirst) 0f else 180f, Motion.bouncy(), label = "sortRot")
-    Box(contentAlignment = Alignment.CenterEnd) {
-        Row(
-            Modifier
-                .offset(2.dp * p, 2.dp * p)
-                .brutal(Palette.Card, radius = 50.dp, shadow = 2.dp - 2.dp * p, border = 2.dp)
-                .clickable(src, null, onClick = onClick)
-                .padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text("↓", fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.graphicsLayer { rotationZ = rot })
-            AnimatedContent(
-                newFirst,
-                transitionSpec = { fadeIn(tween(160)) togetherWith fadeOut(tween(100)) },
-                label = "sortLabel",
-            ) { nf ->
-                Text(if (nf) "Сначала новые" else "Сначала старые", fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
-            }
-        }
-    }
-}
-
-@Composable
 private fun SectionHeader(label: String, count: Int, modifier: Modifier = Modifier) {
     Row(
         modifier
@@ -735,9 +781,13 @@ private fun StatTile(label: String, value: Int, emoji: String, modifier: Modifie
 private fun TaskCard(
     task: Task,
     today: LocalDate,
-    tab: Tab,
     actions: TrackerActions,
     lift: Float,
+    selecting: Boolean,
+    selected: Boolean,
+    onSelect: (() -> Unit)?,
+    onLongPress: (() -> Unit)?,
+    keepInList: Boolean,
     dragModifier: Modifier,
     modifier: Modifier = Modifier,
 ) {
@@ -749,7 +799,7 @@ private fun TaskCard(
     val leave = remember { Animatable(0f) }
     var width by remember { mutableIntStateOf(1) }
     var swipe by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(task) {
+    LaunchedEffect(task, selecting) {
         checking = false
         leave.snapTo(0f)
         swipe = 0f
@@ -765,7 +815,7 @@ private fun TaskCard(
 
     // ── Свайпы: вправо — сделал (в «Сделано» — вернуть), влево — на завтра ──
     val threshold = width * 0.3f
-    val allowLeft = tab != Tab.Done
+    val allowLeft = !task.done
     var armed by remember { mutableStateOf(false) }
     val nowArmed = abs(swipe) > threshold && (swipe > 0 || allowLeft)
     LaunchedEffect(nowArmed) {
@@ -793,11 +843,31 @@ private fun TaskCard(
             },
     ) {
         // Подложка, которая открывается при свайпе.
-        if (swipe != 0f) SwipeUnderlay(swipe, threshold, tab, Modifier.matchParentSize())
+        if (!selecting && swipe != 0f) SwipeUnderlay(swipe, threshold, task.done, Modifier.matchParentSize())
 
         val src = remember { MutableInteractionSource() }
-        val cardBg by animateColorAsState(if (done) Palette.CardDone else Palette.Card, Motion.fade(), label = "cardBg")
+        val cardBg by animateColorAsState(
+            when {
+                selected -> lerp(Palette.Card, Palette.Hay, if (Palette.IsDark) 0.15f else 0.25f)
+                done -> Palette.CardDone
+                else -> Palette.Card
+            }, Motion.fade(), label = "cardBg",
+        )
+        val outline by animateColorAsState(
+            if (selected) Palette.Hay else if (task.hot && !done) Palette.Red else Palette.Ink,
+            Motion.fade(), label = "cardOutline",
+        )
         val shadow by animateDpAsState(if (done) 0.dp else 3.dp + 3.dp * lift, Motion.snappy(), label = "cardShadow")
+        val tap = when {
+            !selecting -> Modifier.combinedClickable(
+                interactionSource = src, indication = null,
+                onLongClick = onLongPress,
+                onLongClickLabel = if (onLongPress == null) null else "Выделить задачу",
+                onClick = { if (!dragged && lift == 0f) actions.onEdit(task) },
+            )
+            onSelect != null -> Modifier.toggleable(selected, src, indication = null, role = Role.Checkbox) { onSelect() }
+            else -> Modifier
+        }
         Row(
             Modifier
                 .fillMaxWidth()
@@ -811,17 +881,18 @@ private fun TaskCard(
                 .draggable(
                     dragState,
                     Orientation.Horizontal,
+                    enabled = !selecting,
                     onDragStarted = { dragged = true },
                     onDragStopped = { v ->
                         val right = swipe > threshold || (v > 2200f && swipe > 30f)
                         val left = allowLeft && (swipe < -threshold || (v < -2200f && swipe < -30f))
                         when {
                             right -> {
-                                animate(swipe, width * 1.15f, animationSpec = tween(180)) { x, _ -> swipe = x }
+                                animate(swipe, if (keepInList) 0f else width * 1.15f, animationSpec = tween(180)) { x, _ -> swipe = x }
                                 actions.onToggle(task.id)
                             }
                             left -> {
-                                animate(swipe, -width * 1.15f, animationSpec = tween(180)) { x, _ -> swipe = x }
+                                animate(swipe, if (keepInList) 0f else -width * 1.15f, animationSpec = tween(180)) { x, _ -> swipe = x }
                                 actions.onPostpone(task.id)
                             }
                             else -> animate(swipe, 0f, animationSpec = Motion.snappy()) { x, _ -> swipe = x }
@@ -832,20 +903,28 @@ private fun TaskCard(
                 .pressScale(src, 0.98f)
                 .brutal(
                     cardBg, radius = 14.dp, shadow = shadow,
-                    borderColor = if (task.hot && !done) Palette.Red else Palette.Ink,
+                    borderColor = outline,
                 )
-                .clickable(src, null) { if (!dragged && lift == 0f) actions.onEdit(task) }
+                .then(tap)
                 .padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            CheckBox(done) {
-                if (checking) return@CheckBox
-                checking = true
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                scope.launch {
-                    delay(if (task.done) 260 else 480)
-                    leave.animateTo(if (task.done) -1f else 1f, tween(230, easing = FastOutSlowInEasing))
-                    actions.onToggle(task.id)
+            when {
+                onSelect != null -> CheckBox(selected, forSelection = true)
+                selecting -> Spacer(Modifier.width(28.dp))
+                else -> CheckBox(done, label = if (task.done) "Вернуть в активные" else "Отметить выполненной") {
+                    if (checking) return@CheckBox
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    if (keepInList) {
+                        actions.onToggle(task.id)
+                    } else {
+                        checking = true
+                        scope.launch {
+                            delay(if (task.done) 260 else 480)
+                            leave.animateTo(if (task.done) -1f else 1f, tween(230, easing = FastOutSlowInEasing))
+                            actions.onToggle(task.id)
+                        }
+                    }
                 }
             }
 
@@ -869,7 +948,7 @@ private fun TaskCard(
                 }
             }
 
-            Text(
+            if (!selecting) Text(
                 "нахер", fontFamily = Mono, fontSize = 10.5.sp, color = Palette.Faint,
                 modifier = Modifier
                     .clickable { commit(-1f) { actions.onDelete(task.id) } }
@@ -880,13 +959,13 @@ private fun TaskCard(
 }
 
 @Composable
-private fun SwipeUnderlay(swipe: Float, threshold: Float, tab: Tab, modifier: Modifier) {
+private fun SwipeUnderlay(swipe: Float, threshold: Float, done: Boolean, modifier: Modifier) {
     val right = swipe > 0
     val p = (abs(swipe) / threshold).coerceIn(0f, 1f)
     val armed = abs(swipe) > threshold
     val iconScale by animateFloatAsState(if (armed) 1.25f else 0.9f, Motion.bouncy(), label = "uScale")
     val (bg, fg, text) = when {
-        right && tab == Tab.Done -> Triple(Palette.Hay, Palette.OnHay, "↩ Вернуть")
+        right && done -> Triple(Palette.Hay, Palette.OnHay, "↩ Вернуть")
         right -> Triple(Palette.Green, Color.White, "✓ Сделал")
         else -> Triple(Palette.Hay, Palette.OnHay, "Завтра ⏭")
     }
@@ -907,8 +986,11 @@ private fun SwipeUnderlay(swipe: Float, threshold: Float, tab: Tab, modifier: Mo
 
 /** Квадратик: галочка прорисовывается штрихом, сам квадрат пружинит. */
 @Composable
-private fun CheckBox(done: Boolean, onClick: () -> Unit) {
-    val bg by animateColorAsState(if (done) Palette.Green else Palette.Paper, Motion.fade(160), label = "checkBg")
+private fun CheckBox(done: Boolean, forSelection: Boolean = false, label: String = "", onClick: (() -> Unit)? = null) {
+    val bg by animateColorAsState(
+        if (!done) Palette.Paper else if (forSelection) Palette.Hay else Palette.Green,
+        Motion.fade(160), label = "checkBg",
+    )
     val draw by animateFloatAsState(if (done) 1f else 0f, tween(if (done) 280 else 150, easing = FastOutSlowInEasing), label = "checkDraw")
     val bounce = remember { Animatable(1f) }
     var first by remember { mutableStateOf(true) }
@@ -920,12 +1002,16 @@ private fun CheckBox(done: Boolean, onClick: () -> Unit) {
     val path = remember { Path() }
     val seg = remember { Path() }
     val measure = remember { PathMeasure() }
+    val ink = if (forSelection) Palette.OnHay else Color.White
+    val interaction = if (onClick == null) Modifier else Modifier
+        .toggleable(done, role = Role.Checkbox) { onClick() }
+        .semantics { contentDescription = label }
     Box(
         Modifier
             .size(28.dp)
             .graphicsLayer { scaleX = bounce.value; scaleY = bounce.value }
             .brutal(bg, radius = 8.dp, shadow = 0.dp)
-            .clickable(remember { MutableInteractionSource() }, null, onClick = onClick),
+            .then(interaction),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.size(18.dp)) {
@@ -936,7 +1022,7 @@ private fun CheckBox(done: Boolean, onClick: () -> Unit) {
             measure.setPath(path, false)
             seg.reset()
             measure.getSegment(0f, measure.length * draw, seg, true)
-            drawPath(seg, Color.White, style = Stroke(3.5f * s, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            drawPath(seg, ink, style = Stroke(3.5f * s, cap = StrokeCap.Round, join = StrokeJoin.Round))
         }
     }
 }

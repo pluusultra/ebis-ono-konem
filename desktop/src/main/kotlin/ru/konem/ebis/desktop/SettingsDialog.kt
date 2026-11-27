@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -223,7 +225,7 @@ private fun GeneralPane(state: AppState) {
     }
     Item("Резервные копии", "Перед импортом сохраняется локальная копия задач и тегов", stack = true) {
         Chips {
-            GhostChip("Корзина") { state.tools = TaskTool.Trash }
+            GhostChip("Корзина") { state.trashOpen = true }
             GhostChip("Сохранить в файл") { exportBackup(state) }
             GhostChip("Загрузить из файла") { loadBackup(state) }
             if (state.store.importBackup.available) {
@@ -284,6 +286,13 @@ private fun LookPane(state: AppState, pickColor: (Color?) -> Color?) {
             state.show(if (Look.isDarkBg(c)) "Тёмный фон — включил ночь" else "Светлый фон — включил день")
         }
     }
+    Item("Конь в шапке", stack = true) {
+        Chips {
+            HorseMascot.entries.forEach { mascot ->
+                MascotOption(mascot, l.mascot == mascot) { set(l.copy(mascot = mascot)) }
+            }
+        }
+    }
     Item("Узор фона", "За списком задач", stack = true) {
         Chips { Pattern.entries.forEach { p -> PatternTile(p, l.pattern == p) { set(l.copy(pattern = p)) } } }
     }
@@ -313,6 +322,24 @@ private fun LookPane(state: AppState, pickColor: (Color?) -> Color?) {
     }
     Row(Modifier.padding(top = 6.dp)) {
         BrutalButton({ set(Look(scale = l.scale)); state.show("Оформление как с завода") }) { Text("Вернуть как было", fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+    }
+}
+
+@Composable
+private fun MascotOption(mascot: HorseMascot, selected: Boolean, onClick: () -> Unit) {
+    val bg by animateColorAsState(if (selected) Palette.AccentBg else Palette.Card, tween(150), label = "mascotOption")
+    Row(
+        Modifier.brutal(bg, radius = 12.dp, shadow = if (selected) 3.dp else 0.dp, border = 2.dp)
+            .selectable(selected, role = Role.RadioButton, onClick = onClick).hand()
+            .padding(horizontal = 9.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        Box(
+            Modifier.size(42.dp).background(Palette.Hay, RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center,
+        ) { MascotImage(mascot, Modifier.size(38.dp)) }
+        Text(mascot.label, color = if (selected) Palette.AccentFg else Palette.Ink, fontWeight = FontWeight.Bold, fontSize = 13.sp)
     }
 }
 

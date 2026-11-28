@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -100,7 +101,7 @@ fun WelcomeScreen(onChoose: (work: Boolean) -> Unit) {
                 onClick = { onChoose(false) },
             )
             Text(
-                "ебись оно конём · v0.0.1-нахуя",
+                stringResource(R.string.app_name),
                 fontFamily = Mono, fontSize = 10.sp, color = Palette.VersionInk,
                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth(),
             )

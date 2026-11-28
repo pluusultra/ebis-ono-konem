@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Ебись оно конём</string>
+    <string name="app_name">Ну его конём</string>
     <string name="sc_add_short">Накинуть</string>
-    <string name="sc_add_long">Накинуть херню</string>
+    <string name="sc_add_long">Накинуть задачу</string>
 </resources>

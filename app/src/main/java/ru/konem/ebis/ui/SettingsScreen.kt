@@ -237,7 +237,7 @@ private fun SettingsContent(onClose: () -> Unit, toast: ToastState) {
             onDone = { ok ->
                 syncLabel = sync.folderLabel()
                 syncError = sync.lastError
-                onToast(if (ok) "Готово. Теперь каждая херня сразу летит в ${SyncFile.FILE_NAME}" else "Не смог писать в эту папку. Выбери другую")
+                onToast(if (ok) "Готово. Теперь каждая задача сразу летит в ${SyncFile.FILE_NAME}" else "Не смог писать в эту папку. Выбери другую")
             },
         )
     }
@@ -314,7 +314,7 @@ private fun SettingsContent(onClose: () -> Unit, toast: ToastState) {
                 }
             }
             if (mutedDay == today) {
-                Warn("🤐 Сегодня конь заткнут", "Ты нажал «Отъебись на сегодня». До завтрашнего утра тишина.", "Размьютить") {
+                Warn("🤐 Сегодня конь заткнут", "Ты нажал «${NotifCopy.actionMute}». До завтрашнего утра тишина.", "Размьютить") {
                     save { this.mutedDay = -1 }
                     mutedDay = -1
                 }
@@ -382,19 +382,14 @@ private fun SettingsContent(onClose: () -> Unit, toast: ToastState) {
                 if (hasImportBackup) SelectChip("Вернуть копию до импорта", false) { confirmRestore = true }
             }
 
-            Section("Обновления", version?.let { "Версия $it" } ?: "Версия неизвестна") {
-                SelectChip("Скачать обновление", false) {
-                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(UPDATES_URL))) }
-                        .onFailure { onToast("Не удалось открыть GitHub в браузере") }
-                }
-            }
+            Section("О приложении", version?.let { "Версия $it" } ?: "Версия неизвестна") {}
 
             Text(
                 "УВЕДОМЛЕНИЯ", fontFamily = Mono, fontSize = 11.sp, letterSpacing = 1.5.sp, color = Palette.Mute2,
                 modifier = Modifier.padding(top = 6.dp),
             )
 
-            Section("☀️ Утренний пинок", "Сколько херни на сегодня и сколько протухло") {
+            Section("☀️ Утренний пинок", "Сколько задач на сегодня и сколько протухло") {
                 TimeChip(morning) { picking = "morning" }
             }
 
@@ -420,7 +415,7 @@ private fun SettingsContent(onClose: () -> Unit, toast: ToastState) {
                 }
             }
 
-            Section("🌙 Вечерний итог", "Что сделал, что проебал, что ждёт завтра") {
+            Section("🌙 Вечерний итог", "Что сделал, что осталось, что ждёт завтра") {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     BrutalSwitch(eveningOn) {
                         eveningOn = it

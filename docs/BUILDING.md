@@ -36,9 +36,13 @@ Syncthing (`ebis-tasks.sync-conflict-*.json`) сливает в задачи и 
 
 ## Сборка
 
-**Android (Windows):** `setup-toolchain.ps1` (один раз), затем `build.ps1` → `ebis-ono-konem.apk`.
+**Android для RuStore (Windows):** `setup-toolchain.ps1` (один раз), затем `./build.ps1` → `dist/rustore/nu-ego-konem.apk`.
+Для следующего релиза передай номер версии, например `./build.ps1 -Version 2.4.2`.
 Своим ключом APK подписывается, только если рядом есть `keystore.properties` и `keystore/ebis.jks` (их нет в репозитории,
 см. [RELEASING.md](RELEASING.md)); без них — отладочным ключом.
+
+Название для карточки — «Ну его конём». Идентификатор пакета `ru.konem.planner` позволяет установить версию рядом с обычной.
+Задачи можно перенести через экспорт и импорт JSON в настройках. Для карточки снимай скриншоты этого APK.
 
 **ПК, Windows:** после `setup-toolchain.ps1`:
 

@@ -97,6 +97,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -155,7 +156,7 @@ private fun buildRows(tab: Tab, tasks: List<Task>, today: LocalDate, newFirst: B
             val week = today.plusDays(7)
             grouped(
                 listOf(
-                    "🪦 Просрано" to list.filter { it.due.isBefore(today) },
+                    "🪦 Просрочено" to list.filter { it.due.isBefore(today) },
                     "🔥 Сегодня" to list.filter { it.due == today },
                     "⏭ Завтра" to list.filter { it.due == today.plusDays(1) },
                     "📆 На неделе" to list.filter { it.due.isAfter(today.plusDays(1)) && !it.due.isAfter(week) },
@@ -579,7 +580,7 @@ private fun Header(subtitle: String, streak: Int, onSettings: () -> Unit, modifi
             HeaderMascot()
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Ебись оно конём", fontFamily = Display, fontWeight = FontWeight.Black, fontSize = 20.sp,
+                    stringResource(R.string.app_name), fontFamily = Display, fontWeight = FontWeight.Black, fontSize = 20.sp,
                     lineHeight = 23.sp, letterSpacing = (-0.5).sp, maxLines = 2,
                 )
                 Row(
@@ -644,7 +645,7 @@ private fun SettingsButton(onClick: () -> Unit) {
 
 @Composable
 private fun Tabs(tab: Tab?, onTab: (Tab) -> Unit, counts: Map<Tab, Int>) {
-    val labels = mapOf(Tab.Today to "🔥 Сегодня", Tab.All to "📦 Вся херня", Tab.Done to "✅ Сделано")
+    val labels = mapOf(Tab.Today to "🔥 Сегодня", Tab.All to "📦 Все задачи", Tab.Done to "✅ Сделано")
     Row(
         Modifier
             .fillMaxWidth()
@@ -949,7 +950,7 @@ private fun TaskCard(
             }
 
             if (!selecting) Text(
-                "нахер", fontFamily = Mono, fontSize = 10.5.sp, color = Palette.Faint,
+                "в корзину", fontFamily = Mono, fontSize = 10.5.sp, color = Palette.Faint,
                 modifier = Modifier
                     .clickable { commit(-1f) { actions.onDelete(task.id) } }
                     .padding(4.dp),

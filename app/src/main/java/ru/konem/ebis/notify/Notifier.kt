@@ -57,13 +57,13 @@ object Notifier {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         listOf(
             NotificationChannel(CH_MORNING, "Утренний пинок", NotificationManager.IMPORTANCE_DEFAULT)
-                .apply { description = "Сколько херни на сегодня" },
+                .apply { description = "Сколько задач на сегодня" },
             NotificationChannel(CH_NAG, "Дневное нытьё", NotificationManager.IMPORTANCE_DEFAULT)
                 .apply { description = "Напоминалки в течение дня" },
             NotificationChannel(CH_SHAME, "Позорный столб", NotificationManager.IMPORTANCE_DEFAULT)
                 .apply { description = "Про самую протухшую задачу" },
             NotificationChannel(CH_EVENING, "Вечерний итог", NotificationManager.IMPORTANCE_DEFAULT)
-                .apply { description = "Что сделал, что проебал" },
+                .apply { description = "Что сделал, что осталось" },
             NotificationChannel(CH_CELEBRATE, "Поздравлялки", NotificationManager.IMPORTANCE_DEFAULT)
                 .apply { description = "Когда всё закрыл" },
             NotificationChannel(CH_REMIND, "Напоминалки по задачам", NotificationManager.IMPORTANCE_HIGH)
@@ -80,7 +80,7 @@ object Notifier {
 
     fun canPost(context: Context): Boolean = NotificationManagerCompat.from(context).areNotificationsEnabled()
 
-    /** force = true — для кнопки «проверить» в настройках: игнорирует «отъебись» и пустые списки. */
+    /** force = true — для кнопки «проверить» в настройках: игнорирует паузу в уведомлениях и пустые списки. */
     fun fire(context: Context, slot: Slot, force: Boolean = false) {
         TaskRepo.init(context)
         val prefs = Prefs(context)

@@ -18,23 +18,23 @@ object Copy {
         }
     }
 
-    /** «1 херня», «3 херни», «5 штук херни»: «5 херней» по-русски не говорят. */
-    fun herni(n: Int): String = plural(n, "$n херня", "$n херни", "$n ${plural(n, "штука", "штуки", "штук")} херни")
+    /** «1 задача», «3 задачи», «5 задач». */
+    fun taskCount(n: Int): String = "$n ${plural(n, "задача", "задачи", "задач")}"
 
-    /** «Осталась 1 херня», «Осталось 3 херни», «Осталось 5 штук херни». */
-    fun left(n: Int): String = "${plural(n, "Осталась", "Осталось", "Осталось")} ${herni(n)}"
+    /** «Осталась 1 задача», «Осталось 3 задачи», «Осталось 5 задач». */
+    fun left(n: Int): String = "${plural(n, "Осталась", "Осталось", "Осталось")} ${taskCount(n)}"
 
     fun subtitle(n: Int): String = when {
-        n == 0 -> "Ноль херни на сегодня. Подозрительно."
+        n == 0 -> "На сегодня пусто. Подозрительно."
         n >= 7 -> "${left(n)}. Ну ты попал."
         else -> "${left(n)} на сегодня"
     }
 
-    val praise = listOf("Ни хера себе, сделал 😳", "Конь бы гордился 🐴", "Минус одна херня", "Глянь-ка, может же", "Записал в легенды")
+    val praise = listOf("Вот это да, сделал 😳", "Конь бы гордился 🐴", "Минус одна задача", "Глянь-ка, может же", "Записал в легенды")
     val undo = listOf("Передумал? Ну конечно.", "Вернул обратно. Классика.")
-    const val deleted = "Ушло нахер. Не жалко."
+    const val deleted = "В корзину. Не жалко."
     val postponed = listOf("Отложил. Завтра точно (нет)", "Перенёс. Конь всё видит 👀", "Завтра так завтра")
-    const val edited = "Переписал. Суть та же, херня та же."
+    const val edited = "Переписал. Суть та же, почерк красивее."
     const val undoLabel = "Верни"
     const val restored = "Вернул как было"
     const val saved = "Повешено. Удачи, бедолага."
@@ -76,7 +76,7 @@ object Copy {
         if (done) return "закрыто" to BadgeKind.Normal
         val d = ChronoUnit.DAYS.between(today, due).toInt()
         return when {
-            d < 0 -> "Просрано на ${-d} ${plural(-d, "день", "дня", "дней")}" to BadgeKind.Late
+            d < 0 -> "Опоздание на ${-d} ${plural(-d, "день", "дня", "дней")}" to BadgeKind.Late
             d == 0 -> "Сегодня" to BadgeKind.Hot
             d == 1 -> "Завтра" to BadgeKind.Normal
             else -> shortDate(due) to BadgeKind.Normal

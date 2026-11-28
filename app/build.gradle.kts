@@ -11,14 +11,14 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ru.konem.ebis"
+        applicationId = "ru.konem.planner"
         minSdk = 26
         targetSdk = 35
         // Версия из тега релиза: ./gradlew assembleRelease -PappVersion=2.1.0 → versionCode 20100.
-        val appVersion = (project.findProperty("appVersion") as String?)?.removePrefix("v")
-        val parts = appVersion?.substringBefore('-')?.split('.')?.mapNotNull { it.toIntOrNull() }.orEmpty()
+        val appVersion = ((project.findProperty("appVersion") as String?) ?: "2.4.1").removePrefix("v")
+        val parts = appVersion.substringBefore('-').split('.').mapNotNull { it.toIntOrNull() }
         versionCode = if (parts.size == 3) parts[0] * 10000 + parts[1] * 100 + parts[2] else 1
-        versionName = appVersion ?: "0.0.1-нахуя"
+        versionName = appVersion
     }
 
     // Ключ подписи в репозитории не лежит. Локально — keystore.properties в корне (в .gitignore),

@@ -52,7 +52,7 @@ import ru.konem.ebis.ui.Copy
 import java.time.LocalDate
 
 /**
- * «Рандом»: конь смотрит на тебя, качает головой и выбирает херню на сегодня.
+ * «Рандом»: конь смотрит на тебя, качает головой и выбирает задачу на сегодня.
  * Не нравится — «давай другое», но конь это запомнит. Состояние (какая задача выпала,
  * сколько раз отказался) хранится у каждого экземпляра виджета отдельно.
  */
@@ -105,13 +105,13 @@ class RandomWidget : GlanceAppWidget() {
                         Spacer(GlanceModifier.height(3.dp))
                         Text("Конь в шоке. Рандомить нечего — накинь что-нибудь.", style = plain(11f), maxLines = 2)
                         Spacer(GlanceModifier.defaultWeight())
-                        Button("+ Накинуть херню", R.drawable.widget_btn_hay, WColor.OnHay, actionStartActivity(quickAddIntent(context)))
+                        Button("+ Накинуть задачу", R.drawable.widget_btn_hay, WColor.OnHay, actionStartActivity(quickAddIntent(context)))
                     }
                     else -> {
                         if (mode == MODE_DONE) {
-                            Text(state[LineKey] ?: "Минус одна херня", style = bold(14f), maxLines = 2)
+                            Text(state[LineKey] ?: "Минус одна задача", style = bold(14f), maxLines = 2)
                             Spacer(GlanceModifier.height(3.dp))
-                            Text("Ещё одну? Осталось ${Copy.herni(left.size)}.", style = plain(11f), maxLines = 2)
+                            Text("Ещё одну? ${Copy.left(left.size)}.", style = plain(11f), maxLines = 2)
                         } else {
                             Text("Не знаешь, за что взяться?", style = bold(14f), maxLines = 2)
                             Spacer(GlanceModifier.height(3.dp))
@@ -119,7 +119,7 @@ class RandomWidget : GlanceAppWidget() {
                         }
                         Spacer(GlanceModifier.defaultWeight())
                         Button(
-                            if (mode == MODE_DONE) "🎲 Давай ещё" else "🎲 Зарандомить херню",
+                            if (mode == MODE_DONE) "🎲 Давай ещё" else "🎲 Бросить жребий",
                             R.drawable.widget_btn_hay, WColor.OnHay, actionRunCallback<RollAction>(),
                         )
                     }
@@ -187,7 +187,7 @@ private fun plain(size: Float) = TextStyle(fontSize = size.sp, fontWeight = Font
 
 private fun mono(size: Float, color: ColorProvider) = TextStyle(fontSize = size.sp, fontFamily = FontFamily.Monospace, color = color)
 
-/** «Зарандомить херню»: случайная задача из сегодняшних. */
+/** «Бросить жребий»: случайная задача из сегодняшних. */
 class RollAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         TaskRepo.init(context)

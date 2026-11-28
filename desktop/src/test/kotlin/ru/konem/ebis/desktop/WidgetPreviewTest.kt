@@ -74,7 +74,7 @@ class WidgetPreviewTest {
                 }
                 Spacer(Modifier.weight(1f))
                 Text("4", fontFamily = Display, fontWeight = FontWeight.Black, fontSize = 38.sp, lineHeight = 40.sp, color = Palette.OnHay)
-                Text("херни осталось\nна сегодня", fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 13.sp, color = Palette.HeaderSub)
+                Text("задачи осталось\nна сегодня", fontWeight = FontWeight.Bold, fontSize = 11.sp, lineHeight = 13.sp, color = Palette.HeaderSub)
             }
         }
         save("streak", 150, 150) {
@@ -96,7 +96,7 @@ class WidgetPreviewTest {
                     Box(Modifier.fillMaxWidth(0.43f).fillMaxSize().background(Palette.Green, RoundedCornerShape(3.dp)))
                 }
                 Spacer(Modifier.height(6.dp))
-                Text("Ещё 4 херни — и серия живёт", fontSize = 10.sp, lineHeight = 12.sp, color = Palette.Mute)
+                Text("Ещё 4 задачи — и серия живёт", fontSize = 10.sp, lineHeight = 12.sp, color = Palette.Mute)
             }
         }
         save("today", 320, 150) {
@@ -195,7 +195,7 @@ class WidgetPreviewTest {
             ) {
                 Text("+", color = Palette.Red, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 Spacer(Modifier.width(10.dp))
-                Text("Накинуть херню…", color = Palette.Hay, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, modifier = Modifier.weight(1f))
+                Text("Накинуть задачу…", color = Palette.Hay, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, modifier = Modifier.weight(1f))
                 Text("🎤", fontSize = 16.sp)
             }
         }

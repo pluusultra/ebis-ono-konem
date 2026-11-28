@@ -73,7 +73,7 @@ class MainActivity : ComponentActivity() {
                 val ask = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
-                    .putExtra(RecognizerIntent.EXTRA_PROMPT, "Какую херню накинуть?")
+                    .putExtra(RecognizerIntent.EXTRA_PROMPT, "Какую задачу накинуть?")
                 // Нет распознавания речи на телефоне — просто открываем форму.
                 try {
                     voice.launch(ask)

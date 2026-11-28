@@ -46,7 +46,7 @@
             android:name=".QuickAddActivity"
             android:exported="false"
             android:theme="@style/Theme.Ebis.QuickAdd"
-            android:taskAffinity="ru.konem.ebis.quickadd"
+            android:taskAffinity="${applicationId}.quickadd"
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:launchMode="singleTask"

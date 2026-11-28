@@ -118,7 +118,7 @@ private val checklistSaver = listSaver<List<ChecklistItem>, Any>(
 )
 
 /**
- * Шторка «Новая херня» / «Правим херню». Выезжает на пружине, смахивается вниз за шапку,
+ * Шторка «Новая задача» / «Правим задачу». Выезжает на пружине, смахивается вниз за шапку,
  * поддерживает системный жест «назад» с предпросмотром.
  */
 @Composable
@@ -270,7 +270,7 @@ private fun SheetContent(
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        if (editing == null) "Новая херня" else "Правим херню",
+                        if (editing == null) "Новая задача" else "Правим задачу",
                         fontFamily = Display, fontWeight = FontWeight.Black, fontSize = 19.sp, modifier = Modifier.weight(1f),
                     )
                     HeaderButton(onClick = onClose, size = 34.dp) { Text("✕", fontSize = 16.sp) }

@@ -243,19 +243,19 @@ fun TagsManager(onToast: (String) -> Unit) {
                 )
                 if (confirmDelete == tag.id) {
                     Text(
-                        "точно нахер", fontFamily = Mono, fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold,
+                        "точно удалить", fontFamily = Mono, fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold,
                         modifier = Modifier.background(Palette.Red, RoundedCornerShape(8.dp))
                             .clickable {
                                 confirmDelete = null
                                 TaskRepo.deleteTag(tag.id)
-                                onToast("Тег «${tag.name}» — нахер")
+                                onToast("Тег «${tag.name}» удалён")
                             }
                             .padding(horizontal = 8.dp, vertical = 5.dp),
                     )
                     Text("не", fontFamily = Mono, fontSize = 11.sp, modifier = Modifier.clickable { confirmDelete = null }.padding(6.dp))
                 } else {
                     Text("✎", fontSize = 15.sp, modifier = Modifier.clickable { editing = tag.id; adding = false }.padding(6.dp))
-                    Text("нахер", fontFamily = Mono, fontSize = 10.5.sp, color = Palette.Faint, modifier = Modifier.clickable { confirmDelete = tag.id }.padding(6.dp))
+                    Text("удалить", fontFamily = Mono, fontSize = 10.5.sp, color = Palette.Faint, modifier = Modifier.clickable { confirmDelete = tag.id }.padding(6.dp))
                 }
             }
         }

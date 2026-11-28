@@ -9,7 +9,7 @@
         android:shortcutLongLabel="@string/sc_add_long">
         <intent
             android:action="ru.konem.ebis.ADD"
-            android:targetPackage="ru.konem.ebis"
+            android:targetPackage="ru.konem.planner"
             android:targetClass="ru.konem.ebis.MainActivity" />
     </shortcut>
 </shortcuts>

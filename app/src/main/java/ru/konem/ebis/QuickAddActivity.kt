@@ -223,7 +223,7 @@ private fun QuickAdd(onClose: () -> Unit, onSave: (String) -> Unit, onExpand: (S
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Накинуть херню",
+                        "Накинуть задачу",
                         fontFamily = Display, fontWeight = FontWeight.Black, fontSize = 15.sp,
                         modifier = Modifier.weight(1f),
                     )

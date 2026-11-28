@@ -157,11 +157,11 @@ fun PermOverlay(visible: Boolean, onYes: () -> Unit, onNo: () -> Unit) {
                     fontFamily = Display, fontWeight = FontWeight.Black, fontSize = 19.sp, textAlign = TextAlign.Center,
                 )
                 Text(
-                    "Утром — сколько херни на сегодня, днём — нытьё, вечером — итог, а за просрочку — позорный столб. Без разрешения конь немой.",
+                    "Утром — сколько задач на сегодня, днём — нытьё, вечером — итог, а за просрочку — позорный столб. Без разрешения конь немой.",
                     fontSize = 13.5.sp, textAlign = TextAlign.Center,
                 )
                 Text(
-                    "Ори, хер с тобой",
+                    "Ладно, ори",
                     color = Palette.AccentFg, fontWeight = FontWeight.Bold, fontSize = 15.sp,
                     modifier = Modifier
                         .padding(top = 4.dp)

@@ -90,8 +90,8 @@ class CounterWidget : GlanceAppWidget() {
         val n = day.remaining.size
         val rotten = day.overdue.size
         val label = when {
-            n == 0 -> "ноль херни.\nПодозрительно."
-            else -> plural(n, "херня осталась", "херни осталось", "штук херни осталось") + "\nна сегодня"
+            n == 0 -> "ноль задач.\nПодозрительно."
+            else -> plural(n, "задача осталась", "задачи осталось", "задач осталось") + "\nна сегодня"
         }
         Box(
             GlanceModifier.fillMaxSize().background(ImageProvider(R.drawable.widget_bg_hay))
@@ -134,7 +134,7 @@ class StreakWidget : GlanceAppWidget() {
             total == 0 -> "На сегодня пусто. Отдыхай, жеребец"
             day.remaining.isEmpty() -> "Всё закрыл. Жеребец 🏆"
             streak == 0 -> "Закрой всё — начнёшь серию"
-            else -> "Ещё ${Copy.herni(day.remaining.size)} — и серия живёт"
+            else -> "Ещё ${Copy.taskCount(day.remaining.size)} — и серия живёт"
         }
         Box(
             GlanceModifier.fillMaxSize().background(ImageProvider(R.drawable.widget_bg_paper))
@@ -206,7 +206,7 @@ class HotWidget : GlanceAppWidget() {
                 val late = ChronoUnit.DAYS.between(t.due, today).toInt()
                 val kicker = when {
                     t.hot -> "горит"
-                    late > 0 -> "просрано на $late ${plural(late, "день", "дня", "дней")}"
+                    late > 0 -> "опоздание на $late ${plural(late, "день", "дня", "дней")}"
                     else -> t.time?.let { "сегодня в ${Copy.fmtTime(it)}" } ?: "на сегодня"
                 }
                 Text(kicker, style = mono(9.5f, WColor.Red), maxLines = 1)
@@ -252,7 +252,7 @@ class QuickWidget : GlanceAppWidget() {
         ) {
             Text("+", style = bold(20f, WColor.Red))
             Spacer(GlanceModifier.width(10.dp))
-            Text("Накинуть херню…", style = bold(13.5f, WColor.Hay), maxLines = 1, modifier = GlanceModifier.defaultWeight())
+            Text("Накинуть задачу…", style = bold(13.5f, WColor.Hay), maxLines = 1, modifier = GlanceModifier.defaultWeight())
             Image(
                 ImageProvider(R.drawable.widget_mic), "Надиктовать",
                 GlanceModifier.size(30.dp).padding(4.dp).clickable(actionStartActivity(voiceIntent(context))),

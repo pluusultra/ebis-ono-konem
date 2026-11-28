@@ -60,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -67,6 +68,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
@@ -83,6 +85,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.awt.ComposeWindow
 import ru.konem.ebis.data.DaySnapshot
 import ru.konem.ebis.ui.Copy
+import ru.konem.ebis.ui.SleepyIconPlacement
 import java.awt.Cursor
 import java.awt.Frame
 import java.awt.MouseInfo
@@ -399,6 +402,7 @@ fun Header(state: AppState, frame: WindowFrame?, today: LocalDate, width: Dp, on
         HayParticles(Modifier.matchParentSize().graphicsLayer(), paused = !alive || state.settingsOpen || state.editing != null) { mouse }
         val logo by animateDpAsState(if (compact) 50.dp else 64.dp, Motion.smooth(), label = "logo")
         val logoShape = RoundedCornerShape(16.dp)
+        val mascot = state.look.mascot
         val titleSize by animateFloatAsState(if (compact) 20f else 27f, Motion.smooth(), label = "title")
         val pad by animateDpAsState(if (compact) 10.dp else 14.dp, Motion.smooth(), label = "hpad")
         Row(
@@ -417,7 +421,15 @@ fun Header(state: AppState, frame: WindowFrame?, today: LocalDate, width: Dp, on
                     Modifier.matchParentSize().clip(logoShape).border(2.5.dp, Palette.OnHay, logoShape),
                     contentAlignment = Alignment.BottomCenter,
                 ) {
-                    HeaderMascot(state.look.mascot, alive, Modifier.size(logo - 5.dp).offset(y = 1.dp))
+                    val portrait = if (mascot == HorseMascot.Sleepy) {
+                        Modifier.matchParentSize().offset(
+                            x = logo * SleepyIconPlacement.HORIZONTAL_OFFSET,
+                            y = logo * SleepyIconPlacement.VERTICAL_OFFSET,
+                        )
+                    } else {
+                        Modifier.size(logo - 5.dp).offset(y = 1.dp)
+                    }
+                    HeaderMascot(mascot, alive, portrait)
                 }
             }
             Spacer(Modifier.width(pad + 2.dp))
@@ -678,7 +690,15 @@ private fun HeaderMascot(mascot: HorseMascot, alive: Boolean, modifier: Modifier
                     SleepyExpression.EyeRoll -> eyeRoll
                     SleepyExpression.Sigh -> sigh
                 }
-                if (portrait != null) Image(portrait, contentDescription = null, modifier = Modifier.fillMaxSize())
+                if (portrait != null) {
+                    Image(
+                        portrait, contentDescription = null,
+                        modifier = Modifier.fillMaxSize().drawWithContent {
+                            // Выражение меняется до подбородка, плечи рисует основной кадр.
+                            clipRect(bottom = size.height * 0.77f) { this@drawWithContent.drawContent() }
+                        },
+                    )
+                }
             }
         }
     }

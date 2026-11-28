@@ -45,17 +45,23 @@ object Launcher {
     }
 }
 
+private fun extractNotificationIcon(file: File): File {
+    val bytes = Launcher::class.java.getResourceAsStream("/notif/${file.name}")?.use { it.readBytes() }
+    if (bytes != null && !(file.exists() && file.readBytes().contentEquals(bytes))) {
+        file.parentFile.mkdirs()
+        file.writeBytes(bytes)
+    }
+    return file
+}
+
 /** Linux: уведомления через notify-send (работает и без трея, например в GNOME) и автозапуск через ~/.config/autostart. */
 object LinuxDesk {
     private val home = System.getProperty("user.home")
     private val config = System.getenv("XDG_CONFIG_HOME")?.takeIf { it.isNotBlank() }?.let(::File) ?: File(home, ".config")
     private val autostartFile = File(config, "autostart/ebis-ono-konem.desktop")
     private val icon by lazy {
-        File(DesktopStore.defaultFolder(), "notif/logo.png").also { f ->
-            if (!f.exists()) runCatching {
-                f.parentFile.mkdirs()
-                WinToast::class.java.getResourceAsStream("/notif/logo.png")?.use { f.writeBytes(it.readBytes()) }
-            }
+        File(DesktopStore.defaultFolder(), "notif/logo.png").also { file ->
+            runCatching { extractNotificationIcon(file) }
         }
     }
 
@@ -127,17 +133,13 @@ object WinToast {
         }
         worker.execute {
             runCatching {
-                dir.mkdirs()
                 listOf("logo.png", "icon.ico").forEach { name ->
-                    val f = File(dir, name)
-                    // Перезаписываем, если значок в сборке поменялся.
-                    val bytes = WinToast::class.java.getResourceAsStream("/notif/$name")?.use { it.readBytes() }
-                    if (bytes != null && !(f.exists() && f.readBytes().contentEquals(bytes))) f.writeBytes(bytes)
+                    extractNotificationIcon(File(dir, name))
                 }
                 val target = Launcher.exe ?: Launcher.command("").substringAfter('"').substringBefore('"')
                 val icon = Launcher.exe ?: File(dir, "icon.ico").absolutePath
                 val open = Launcher.command("%1")
-                val sign = "4|$target|$open"
+                val sign = "5|$target|$icon|$open"
                 if (prefs.get("win.setup", "") != sign) {
                     if (ps(setupScript(target, icon, open)) == 0) {
                         prefs.put("win.setup", sign)

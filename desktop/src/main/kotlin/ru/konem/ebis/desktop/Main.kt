@@ -49,6 +49,8 @@ import javax.swing.JFileChooser
 import javax.swing.UIManager
 import kotlin.system.exitProcess
 
+private const val AppIcon = "notif/logo.png"
+
 /**
  * Аргументы: ссылка из кнопки уведомления (ebis-konem://done/123) или --hidden (автозапуск: сразу в трей).
  * Если приложение уже открыто, команда уходит ему, а этот процесс закрывается.
@@ -128,7 +130,7 @@ fun main(args: Array<String>) {
         }
 
         if (Launcher.hasTray && !LinuxTray.active) Tray(
-            icon = painterResource("logo_app.xml"),
+            icon = painterResource(AppIcon),
             state = tray,
             tooltip = "Ебись оно конём",
             onAction = { toggle() },
@@ -154,7 +156,7 @@ fun main(args: Array<String>) {
                 resizable = false,
                 alwaysOnTop = true,
                 title = "Горит: ${r.title}",
-                icon = painterResource("logo_app.xml"),
+                icon = painterResource(AppIcon),
             ) {
                 LaunchedEffect(r) {
                     window.toFront()
@@ -198,7 +200,7 @@ fun main(args: Array<String>) {
             undecorated = true,
             resizable = true,
             title = "Ебись оно конём",
-            icon = painterResource("logo_app.xml"),
+            icon = painterResource(AppIcon),
             state = windowState,
             onPreviewKeyEvent = { e ->
                 lively.poke()

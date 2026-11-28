@@ -1,13 +1,18 @@
 package ru.konem.ebis.desktop
 
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image as SkImage
 import org.junit.Test
@@ -17,6 +22,7 @@ import ru.konem.ebis.data.TagColors
 import ru.konem.ebis.data.Task
 import ru.konem.ebis.data.TaskData
 import ru.konem.ebis.data.TaskJson
+import ru.konem.ebis.ui.SleepyIconPlacement
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.ByteBuffer
@@ -131,13 +137,24 @@ class RenderTest {
         dir.deleteRecursively()
     }
 
-    /** Иконки для установщиков из того же logo_app.xml: png для Linux и ico (PNG внутри) для Windows. */
+    /** Сонный для ярлыков, установщиков, трея и уведомлений Windows и Linux. */
     @Test
     fun renderIcons() {
-        val sizes = listOf(16, 32, 48, 256)
+        val sizes = listOf(16, 24, 32, 48, 64, 128, 256)
         val pngs = sizes.associateWith { s ->
-            render(s, s, frames = 1) { Image(painterResource("logo_app.xml"), null, Modifier.fillMaxSize()) }
-                .encodeToData(EncodedImageFormat.PNG)!!.bytes
+            render(s, s, frames = 1) {
+                Box(
+                    Modifier.fillMaxSize().clip(RoundedCornerShape(23)).background(Color(0xFFFFD447)),
+                ) {
+                    MascotImage(
+                        HorseMascot.Sleepy,
+                        Modifier.matchParentSize().offset(
+                            x = s.dp * SleepyIconPlacement.HORIZONTAL_OFFSET,
+                            y = s.dp * SleepyIconPlacement.VERTICAL_OFFSET,
+                        ),
+                    )
+                }
+            }.encodeToData(EncodedImageFormat.PNG)!!.bytes
         }
         val dir = File(projectDir, "icons").apply { mkdirs() }
         File(dir, "icon.png").writeBytes(pngs.getValue(256))
